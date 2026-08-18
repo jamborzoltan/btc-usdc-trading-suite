@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>BTC/USDC robot</title>
+  <meta name="theme-color" content="#0b1020">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/btc-usdc-robot.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/btc-usdc-robot.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<!--
+  A BTC/USDC robot felületének HTML-szerkezete.
+  A webtárhely a statikus fájlt tölti be; a stílusok a styles.css-ben,
+  a böngészőoldali működési logika az app.js-ben található.
+-->
+<body>
+  <div class="mysql-connection-indicator checking" id="mysqlConnectionIndicator" role="status" aria-live="polite">
+    <span class="mysql-connection-dot" aria-hidden="true"></span>
+    <span id="mysqlConnectionText">MySQL kapcsolat ellenőrzése…</span>
+  </div>
+  <main>
+    <header class="top">
+      <div><h1>BTC/USDC robot</h1><p class="subtitle">Binance USDⓈ-M számlaadat és folyamatos stratégiafigyelés.</p></div>
+      <span class="pill locked">● Éles számlaadat · végrehajtás zárolva</span>
+    </header>
+    <section class="card binance" id="binancePanel" aria-labelledby="binanceTitle">
+      <div class="binance-head">
+        <div><h2 id="binanceTitle">Binance USDⓈ-M · valós USDC számla</h2><p class="hint">A mini PC hitelesített Binance-kapcsolatából érkezik. A böngésző nem kap API-kulcsot.</p></div>
+        <span class="execution-lock">Megbízásküldés zárolva</span>
+      </div>
+      <div class="binance-grid">
+        <div class="binance-metric"><div class="label">Tárcaegyenleg</div><div class="value" id="binanceWallet">—</div></div>
+        <div class="binance-metric"><div class="label">Elérhető egyenleg</div><div class="value" id="binanceAvailable">—</div></div>
+        <div class="binance-metric"><div class="label">Nem realizált P/L</div><div class="value" id="binanceUnrealized">—</div></div>
+        <div class="binance-metric"><div class="label">Margin egyenleg</div><div class="value" id="binanceMargin">—</div></div>
+      </div>
+      <div class="binance-positions"><h3>Nyitott USDⓈ-M pozíciók</h3><table><thead><tr><th>Szimbólum</th><th>Irány</th><th>Mennyiség</th><th>Belépő</th><th>Becsült mark</th><th>Nem realizált P/L</th></tr></thead><tbody id="binancePositions"><tr><td colspan="6" class="empty">A fiókadatokra vár…</td></tr></tbody></table></div>
+      <p class="binance-status" id="binanceAccountStatus">A külön Python robot hitelesített Binance-kapcsolatára vár…</p>
+    </section>
+    <section class="card strategy" aria-labelledby="strategyTitle">
+      <div class="strategy-head">
+        <div><h2 id="strategyTitle">Választható futures robot</h2><p class="hint">A jelzések valós piaci adaton futnak. Az éles végrehajtás a következő, külön engedélyezendő fázis.</p></div>
+        <div class="strategy-controls">
+          <div class="leverage-control"><label for="leverageRange">Tervezett tőkeáttét <output id="leverageValue">1×</output></label><input id="leverageRange" type="range" min="1" max="50" step="1" value="1"></div>
+          <div class="margin-control"><label for="marginRange">Tervezett USDC felhasználás <output id="marginValue">20%</output></label><input id="marginRange" type="range" min="1" max="100" step="1" value="20"></div>
+          <div class="stop-control"><label for="stopLossRange">Stop-loss távolsága <output id="stopLossValue">2,0%</output></label><input id="stopLossRange" type="range" min="0.25" max="20" step="0.25" value="2"></div>
+          <div class="trailing-control"><label for="trailingRange">Trailing stop távolsága <output id="trailingValue">1,50%</output></label><input id="trailingRange" type="range" min="0.25" max="20" step="0.25" value="1.5"></div>
+          <div class="partial-take-profit-control"><label for="partialTakeProfitRange">Részleges zárás nyereségnél <output id="partialTakeProfitValue">Kikapcsolva</output></label><input id="partialTakeProfitRange" type="range" min="0" max="20" step="0.25" value="0"></div>
+          <div class="partial-close-control"><label for="partialCloseRange">Zárandó pozíciórész <output id="partialCloseValue">50%</output></label><input id="partialCloseRange" type="range" min="10" max="90" step="5" value="50"></div>
+          <div class="profit-fade-control"><label for="profitFadeRange">Tartás jel · csúcstól visszaesés <output id="profitFadeValue">1,00%</output></label><input id="profitFadeRange" type="range" min="0" max="10" step="0.25" value="1"></div>
+          <div class="profit-fade-close-control"><label for="profitFadeCloseRange">Ilyenkor zárandó maradék <output id="profitFadeCloseValue">100%</output></label><input id="profitFadeCloseRange" type="range" min="10" max="100" step="5" value="100"></div>
+          <div class="strategy-toggle"><label for="confirmStopClose"><input id="confirmStopClose" type="checkbox" checked>Stop csak stratégia-gyertya záróáron</label></div>
+        </div>
+      </div>
+      <div class="strategy-grid">
+        <div class="strategy-metric"><div class="label" id="indicatorLabel">Indikátor</div><div class="value" id="emaValue">—</div></div>
+        <div class="strategy-metric position-metric"><div class="label">Futures pozíció</div><div class="value" id="positionValue">—</div><div class="position-prices"><span><small>Belépési ár</small><strong id="entryPriceValue">—</strong></span><span><small>Jelenlegi ár</small><strong id="currentPriceValue">—</strong></span><span><small>Becsült likvidár</small><strong id="liquidationPriceValue">—</strong></span></div></div>
+        <div class="strategy-metric"><div class="label">Binance pozíció P/L</div><div class="value" id="positionPnlValue">—</div></div>
+        <div class="strategy-metric"><div class="label">Bot stop állapota</div><div class="value" id="stopPriceValue">Zárolva</div></div>
+        <div class="strategy-metric"><div class="label">USDC nem realizált P/L</div><div class="value" id="botPnlValue">—</div></div>
+      </div>
+      <p class="strategy-reason" id="strategyReason">A stratégia jelzésre vár…</p>
+      <p class="strategy-status" id="strategyStatus">A stratégia kikapcsolva. A Binance-számla olvasása ettől függetlenül működik.</p>
+      <p class="worker-status" id="workerStatus" role="status">Külön robot: még nem kapcsolódott.</p>
+    </section>
+    <p class="status" id="status">Ár betöltése…</p>
+  </main>
+  <section class="chart-window" id="chartWindow" aria-labelledby="chartTitle">
+    <div class="chart-window-header" id="chartWindowHandle">
+      <h2 id="chartTitle">BTC/USDC gyertyadiagram</h2>
+      <div class="chart-indicators" aria-label="A diagramra rajzolt indikátorok"><span class="ema20-legend">EMA(20)</span><span class="ema50-legend">EMA(50)</span></div>
+      <div class="timeframes" aria-label="Idősík választása">
+        <button class="timeframe" type="button" data-interval="15" aria-pressed="true">15 perc</button>
+        <button class="timeframe" type="button" data-interval="60" aria-pressed="false">1 óra</button>
+        <button class="timeframe" type="button" data-interval="1440" aria-pressed="false">1 nap</button>
+      </div>
+    </div>
+    <div class="chart-canvas"><canvas id="candleChart" role="img" aria-label="BTC/USDC gyertyadiagram"></canvas></div>
+    <p class="chart-status" id="chartStatus">Gyertyaadatok betöltése…</p>
+    <div class="chart-window-resize" id="chartWindowResize" aria-hidden="true"></div>
+  </section>
+  <section class="strategy-action-bar" aria-label="Robotvezérlők">
+    <label class="bottom-auto-toggle" for="strategyEnabled">
+      <input id="strategyEnabled" type="checkbox">
+      <span class="bottom-auto-toggle-track" aria-hidden="true"><span></span></span>
+      <span class="bottom-auto-toggle-label">Stratégiafigyelés</span>
+      <span class="bottom-auto-toggle-state" aria-hidden="true"></span>
+    </label>
+    <div class="bottom-strategy-select">
+      <label for="strategyType">Stratégia</label>
+      <select id="strategyType"><option value="trend">Trendkövető EMA</option><option value="momentum">Momentum</option><option value="mean_reversion">Mean reversion</option><option value="trend_impulse">Trend + Momentum</option></select>
+    </div>
+    <div class="bottom-strategy-select bottom-interval-select">
+      <label for="strategyInterval">Idősík</label>
+      <select id="strategyInterval"><option value="15">15 perc</option><option value="60">1 óra</option></select>
+    </div>
+  </section>
+  <footer class="strategy-bottom-bar" aria-label="Piaci és stratégia összefoglaló">
+    <div class="strategy-bottom-item" aria-live="polite"><small>BTC / USDC · <span id="change">—</span></small><strong class="value" id="price">—</strong></div>
+    <div class="strategy-bottom-item strategy-signals-item"><small>Stratégiajelzések · zöld: aktív</small><div class="strategy-signals" id="allStrategySignals" aria-live="polite"></div></div>
+    <div class="strategy-bottom-item"><small id="trendLabel">Piaci kontextus</small><strong class="value" id="trendValue">—</strong></div>
+    <div class="strategy-bottom-item"><small>Binance margin</small><strong class="value" id="botValue">—</strong></div>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

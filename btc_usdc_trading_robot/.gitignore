@@ -1,0 +1,4 @@
+robot.cfg
+logs/
+__pycache__/
+robot/__pycache__/

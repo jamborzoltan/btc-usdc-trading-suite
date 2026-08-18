@@ -1,0 +1,19 @@
+<?php
+/*
+ * Másold config.php néven, majd a tárhelyed MySQL-adatbázisának adataival töltsd ki.
+ * Ez a fájl csak minta; a valódi config.php-t ne töltsd fel nyilvános repositoryba.
+ */
+return array(
+    'db_host' => 'localhost',
+    'db_port' => 3306,
+    'db_name' => 'SAJAT_ADATBAZIS_NEVE',
+    'db_user' => 'SAJAT_ADATBAZIS_FELHASZNALO',
+    'db_password' => 'IDE_KERUL_AZ_ADATBAZIS_JELSZAVA',
+
+    // Egyetlen, saját használatú közös robotállapot az összes eszköz számára.
+    'state_key' => 'btc-usdc-sajat-robot',
+
+    // Legalább 24 karakteres véletlen titok. Ugyanaz kerüljön a mini PC
+    // robot.cfg fájljának web_state.runtime_token értékébe.
+    'robot_runtime_token' => 'CSERELD_LE_EGY_HOSSZU_VELETLEN_TITOKRA_2026',
+);

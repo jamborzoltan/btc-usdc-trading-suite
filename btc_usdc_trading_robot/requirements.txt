@@ -1,0 +1,1 @@
+# A robot első, megfigyelő fázisa kizárólag a Python szabványkönyvtárát használja.

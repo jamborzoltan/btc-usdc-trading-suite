@@ -1,0 +1,26 @@
+[robot]
+mode = live_read_only
+poll_seconds = 1
+
+[web_state]
+url = https://sajatdomain.hu/api/state.php
+runtime_url = https://sajatdomain.hu/api/robot-runtime.php
+runtime_token = IDE_LEGALABB_24_KARAKTERES_KULON_TITOK_KELL
+username =
+password =
+
+[binance_usdm]
+# Csak a mini PC-n lévő robot.cfg fájlba kerüljön valódi kulcs. A webtárhelyre ne töltsd fel.
+# Az első ellenőrzéshez az API-kulcson csak USD-M Futures olvasási jogosultság legyen.
+api_key = IDE_JON_A_BINANCE_API_KEY
+api_secret = IDE_JON_A_BINANCE_API_SECRET
+base_url = https://fapi.binance.com
+symbol = BTCUSDC
+recv_window_ms = 5000
+
+[live_trading]
+# A jelenlegi kód akkor sem tud ordert küldeni, ha ezt átírnád: a végrehajtás kód szinten zárolt.
+enabled = false
+acknowledgement =
+max_order_notional_usdc = 0
+max_daily_loss_usdc = 0

@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "BTC/USDC robot",
+  "short_name": "BTC/USDC robot",
+  "description": "BTC/USDC Binance USDⓈ-M számlanézet és stratégia-vezérlő.",
+  "lang": "hu",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    {
+      "src": "icons/btc-usdc-robot.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
