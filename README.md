@@ -48,8 +48,8 @@ cd ..\btc_usdc_web_trader
 node --check app.js
 ```
 
-Ugyanezek az ellenőrzések minden GitHub push és pull request alkalmával
-automatikusan lefutnak.
+Ezek az ellenőrzések helyben futtathatók; automatikus GitHub Actions CI később
+külön workflow-ként adható a repóhoz.
 
 ## Titkok kezelése
 
