@@ -31,6 +31,10 @@
           <button class="auth-primary" type="submit">Bejelentkezés</button>
         </form>
         <button class="auth-passkey" id="passkeyLoginButton" type="button" hidden>Belépés Face ID-val / passkey-jel</button>
+        <label class="auth-auto-passkey" id="autoPasskeyControl" hidden>
+          <input id="autoPasskeyCheckbox" type="checkbox">
+          <span>A PWA automatikusan próbáljon Face ID-val belépni</span>
+        </label>
         <form class="auth-form auth-setup" id="setupForm" hidden>
           <h2>Első biztonsági beállítás</h2>
           <p>Hozd létre az egyetlen webapp-felhasználót a config.php-ban megadott egyszeri beállítási tokennel.</p>
@@ -48,6 +52,7 @@
   </section>
   <div class="auth-toolbar" id="authToolbar" hidden>
     <span id="authSessionLabel">Bejelentkezve</span>
+    <button id="autoPasskeyButton" type="button" hidden>Auto Face ID: ki</button>
     <button id="registerPasskeyButton" type="button" hidden>Face ID beállítása</button>
     <button id="logoutButton" type="button">Kilépés</button>
   </div>

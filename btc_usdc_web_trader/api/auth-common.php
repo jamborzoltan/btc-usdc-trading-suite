@@ -57,6 +57,9 @@ function openDatabase(array $config): mysqli
         (int) ($config['db_port'] ?? 3306)
     );
     $connection->set_charset('utf8mb4');
+    // A robot ISO 8601 UTC időpontokat küld; így a DATETIME/TIMESTAMP mezők és
+    // az API-ba visszaalakított időpontok tárhely-időzónától függetlenek.
+    $connection->query("SET time_zone = '+00:00'");
     return $connection;
 }
 

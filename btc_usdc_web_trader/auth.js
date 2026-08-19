@@ -6,14 +6,42 @@
   const isPwa = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   const appMode = isPwa ? "pwa" : "web";
   const supportsPasskeys = Boolean(window.PublicKeyCredential && navigator.credentials);
+  const AUTO_PASSKEY_KEY = "btc-usdc-auto-passkey-v1";
+  const SKIP_AUTO_PASSKEY_KEY = "btc-usdc-skip-auto-passkey-once";
   let csrfToken = "";
   let authenticationState = null;
   let gatePromise = null;
   let resolveGate = null;
   let applicationStarted = false;
   let eventsBound = false;
+  let automaticPasskeyAttempted = false;
 
   const byId = id => document.getElementById(id);
+
+  function autoPasskeyEnabled() {
+    try { return localStorage.getItem(AUTO_PASSKEY_KEY) === "1"; } catch { return false; }
+  }
+
+  function setAutoPasskeyEnabled(enabled) {
+    try { localStorage.setItem(AUTO_PASSKEY_KEY, enabled ? "1" : "0"); } catch { /* A belépés ettől még működik. */ }
+    renderAutoPasskeySetting();
+  }
+
+  function renderAutoPasskeySetting() {
+    const available = isPwa && supportsPasskeys && Boolean(authenticationState?.passkeyAvailable);
+    const enabled = autoPasskeyEnabled();
+    const control = byId("autoPasskeyControl");
+    const checkbox = byId("autoPasskeyCheckbox");
+    const button = byId("autoPasskeyButton");
+    if (control) control.hidden = !available || Boolean(authenticationState?.authenticated);
+    if (checkbox) checkbox.checked = enabled;
+    if (button) {
+      button.hidden = !available || !authenticationState?.authenticated;
+      button.textContent = `Auto Face ID: ${enabled ? "be" : "ki"}`;
+      button.classList.toggle("enabled", enabled);
+      button.setAttribute("aria-pressed", enabled ? "true" : "false");
+    }
+  }
 
   function setMessage(message, error = false) {
     const node = byId("authMessage");
@@ -86,6 +114,7 @@
       const username = setupRequired ? byId("setupUsername") : byId("loginUsername");
       window.setTimeout(() => username?.focus(), 50);
     }
+    renderAutoPasskeySetting();
   }
 
   function completeAuthentication(state) {
@@ -252,7 +281,12 @@
       // A helyi felületet akkor is lezárjuk, ha a session már lejárt.
     }
     csrfToken = "";
+    try { sessionStorage.setItem(SKIP_AUTO_PASSKEY_KEY, "1"); } catch { /* Nem kritikus. */ }
     window.location.reload();
+  }
+
+  function toggleAutoPasskey() {
+    setAutoPasskeyEnabled(!autoPasskeyEnabled());
   }
 
   function bindEvents() {
@@ -261,6 +295,8 @@
     byId("loginForm")?.addEventListener("submit", passwordLogin);
     byId("setupForm")?.addEventListener("submit", setupLogin);
     byId("passkeyLoginButton")?.addEventListener("click", passkeyLogin);
+    byId("autoPasskeyCheckbox")?.addEventListener("change", event => setAutoPasskeyEnabled(event.target.checked));
+    byId("autoPasskeyButton")?.addEventListener("click", toggleAutoPasskey);
     byId("registerPasskeyButton")?.addEventListener("click", registerPasskey);
     byId("logoutButton")?.addEventListener("click", logout);
   }
@@ -270,6 +306,15 @@
     if (!gatePromise) gatePromise = new Promise(resolve => { resolveGate = resolve; });
     const state = await refreshAuthentication();
     if (state?.authenticated) completeAuthentication(state);
+    else if (state?.passkeyAvailable && isPwa && supportsPasskeys && autoPasskeyEnabled() && !automaticPasskeyAttempted) {
+      automaticPasskeyAttempted = true;
+      let skipOnce = false;
+      try {
+        skipOnce = sessionStorage.getItem(SKIP_AUTO_PASSKEY_KEY) === "1";
+        sessionStorage.removeItem(SKIP_AUTO_PASSKEY_KEY);
+      } catch { /* Nem kritikus. */ }
+      if (!skipOnce) await passkeyLogin();
+    }
     return gatePromise;
   }
 

@@ -30,7 +30,9 @@ a mini PC-n maradhat.
    `robot.cfg` megtartásával, majd indítsd újra a robotot. Az új kliens már
    elküldi a meglévő `runtime_token` értéket a state API-nak is; a régi PHP API
    ezt az extra fejlécet még egyszerűen figyelmen kívül hagyja.
-2. Importáld az új `schema.sql` fájlt és egészítsd ki a tárhelyes `config.php`-t.
+2. Importáld az új `schema.sql` fájlt. Ez létrehozza a strukturált táblákat, de
+   nem törli és nem írja felül a régi payload-táblákat. Ezután egészítsd ki a
+   tárhelyes `config.php`-t.
 3. Ezután töltsd fel a webes fájlokat. Így az új, védett state API megjelenésekor
    a robot már rendelkezik a szükséges gépi hitelesítéssel.
 4. Végezd el az egyszeri webes jelszóbeállítást, majd az iPhone-on regisztráld a
@@ -39,14 +41,16 @@ a mini PC-n maradhat.
 ## Közös MySQL tárolás beállítása
 
 Ez a lépés teszi lehetővé, hogy minden gépen és böngészőben ugyanaz a
-stratégia-, idősík- és kockázati vezérlőállapot jelenjen meg. A valós
-Binance-számlakép külön runtime-rekordból érkezik.
+stratégia-, idősík- és kockázati vezérlőállapot jelenjen meg. A beállítások és
+a valós Binance-runtime külön, olvasható oszlopokban és táblákban vannak.
 
 1. A tárhely MySQL-kezelőjében hozz létre egy adatbázist és egy hozzá tartozó,
    teljes jogosultságú adatbázis-felhasználót.
-2. A phpMyAdminban futtasd újra a projekt `api/schema.sql` fájlját. A két
-   robottábla mellett létrejön a felhasználó-, passkey- és belépéskorlátozó
-   tábla is; a meglévő robotállapot nem törlődik.
+2. A phpMyAdminban futtasd újra a projekt `api/schema.sql` fájlját. Létrejön a
+   `btc_usdc_bot_settings`, `btc_usdc_robot_status`,
+   `btc_usdc_strategy_snapshot`, `btc_usdc_binance_account` és
+   `btc_usdc_open_positions` tábla, továbbá változatlanul megmaradnak az auth-
+   és passkey-táblák. A művelet nem törli a meglévő adatokat.
 3. A projekt `api` mappájában másold a `config.php.example` fájlt `config.php`
    néven, és töltsd ki a tárhelyes MySQL-adatokkal.
 4. A saját, már kitöltött `api/config.php` fájlodba másold át a minta új
@@ -80,6 +84,19 @@ küldi; a böngésző soha nem kapja meg.
 Az API minden SQL-művelete előkészített `mysqli` lekérdezést használ. A
 mentések állapotverziót is használnak: ha két eszköz egyszerre módosítana,
 az oldal a legfrissebb közös állapotot tölti vissza, nem írja felül csendben.
+
+### Átállás a régi payload-táblákról
+
+Az új `state.php` az első sikeres állapotolvasáskor átmásolja a régi
+`btc_usdc_robot_state.payload` beállításait a `btc_usdc_bot_settings` táblába,
+az eredeti `revision` megtartásával. Az új `robot-runtime.php` a mini PC első
+következő szívverésekor tranzakcióban feltölti a négy strukturált runtime-
+táblát. A böngésző és a Python robot API-formátuma közben nem változik.
+
+A régi `btc_usdc_robot_state` és `btc_usdc_robot_runtime` táblákat csak akkor
+érdemes kézzel archiválni vagy törölni, amikor phpMyAdminban már ellenőrizted az
+új táblákat és készítettél adatbázis-mentést. A telepítő SQL szándékosan nem
+végez automatikus törlést.
 
 Az oldal és a valósadat-API-k most már beépített session-hitelesítést használnak.
 Az állapotmódosítások CSRF-tokenhez kötöttek, a hibás jelszavak száma pedig
@@ -117,6 +134,9 @@ az elavult robot-szívverést és Binance-számlaképet figyelmeztetéssel jelö
 2. Öt percen belül válaszd a „Face ID beállítása” gombot.
 3. Fogadd el az iOS passkey-létrehozását.
 4. A következő belépéskor válaszd a „Belépés Face ID-val / passkey-jel” gombot.
+5. A telepített PWA eszköztárában igény szerint kapcsold be az „Auto Face ID”
+   funkciót. Ekkor session nélkül az alkalmazás indításkor egyszer automatikusan
+   elindítja a passkey-kérést; kijelentkezés után ezt az első próbát kihagyja.
 
 A WebAuthn csak HTTPS-en működik, és a passkey az `auth_rp_id` domainhez kötődik.
 Az alkalmazás kötelező felhasználó-ellenőrzést kér; hogy az iOS éppen Face ID-t

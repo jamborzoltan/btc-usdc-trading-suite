@@ -20,6 +20,8 @@
     .auth-form input { min-height:46px; }
     .auth-primary,.auth-passkey { width:100%; min-height:46px; margin-top:10px; background:#2757a7; }
     .auth-passkey { background:#147a58; }
+    .auth-auto-passkey { display:flex; align-items:center; gap:9px; margin:13px 0 0; color:var(--muted); font-size:.8rem; cursor:pointer; }
+    .auth-auto-passkey input { width:18px; height:18px; flex:0 0 18px; accent-color:var(--green); }
     .auth-setup h2 { margin:0 0 2px; color:var(--text); font-size:1.08rem; text-transform:none; letter-spacing:0; }
     .auth-setup p { margin:0 0 7px; color:var(--muted); font-size:.82rem; }
     .auth-message { min-height:20px; margin:13px 0 0; color:var(--green); font-size:.82rem; text-align:center; }
@@ -29,6 +31,7 @@
     .auth-toolbar span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .auth-toolbar button { flex:0 0 auto; padding:6px 8px; font-size:.7rem; }
     #registerPasskeyButton { background:#147a58; }
+    #autoPasskeyButton.enabled { background:#147a58; }
     #logoutButton { background:#92394a; }
     main { max-width:1100px; margin:auto; padding:68px 20px calc(126px + var(--bottom-safe-area)); }
     .mysql-connection-indicator { position:fixed; z-index:30; top:12px; left:12px; display:flex; align-items:center; gap:7px; padding:7px 10px; color:var(--text); background:rgba(13,20,39,.96); border:1px solid var(--line); border-radius:999px; box-shadow:0 6px 18px rgba(0,0,0,.24); font-size:.74rem; font-weight:700; }

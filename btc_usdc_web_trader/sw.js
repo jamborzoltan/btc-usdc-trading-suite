@@ -1,4 +1,4 @@
-const CACHE_NAME = "btc-usdc-robot-shell-v12";
+const CACHE_NAME = "btc-usdc-robot-shell-v13";
 const APP_SHELL = [
   "./",
   "./index.html",
