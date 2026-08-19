@@ -1,8 +1,9 @@
-const CACHE_NAME = "btc-usdc-robot-shell-v10";
+const CACHE_NAME = "btc-usdc-robot-shell-v12";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./auth.js",
   "./app.js",
   "./manifest.webmanifest",
   "./icons/btc-usdc-robot.svg",

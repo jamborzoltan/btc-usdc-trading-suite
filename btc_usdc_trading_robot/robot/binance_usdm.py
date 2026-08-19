@@ -53,12 +53,33 @@ class BinanceUsdmClient:
         if not isinstance(account_config, dict):
             raise BinanceApiError("A Binance fiókbeállítás-válasza hibás.")
 
-        usdc = next(
-            (item for item in account_info["assets"] if isinstance(item, dict) and item.get("asset") == "USDC"),
-            None,
+        asset_rows = [item for item in account_info["assets"] if isinstance(item, dict)]
+        usdc = next((item for item in asset_rows if item.get("asset") == "USDC"), None)
+        bnfcr = next((item for item in asset_rows if item.get("asset") == "BNFCR"), None)
+        if usdc is None and bnfcr is None:
+            raise BinanceApiError("A Binance USDⓈ-M fiókban nem található USDC- vagy BNFCR-egyenleg.")
+
+        def balance_magnitude(item: dict[str, Any] | None) -> float:
+            if item is None:
+                return 0.0
+            return max(
+                abs(self._number(item.get("walletBalance"))),
+                abs(self._number(item.get("marginBalance"))),
+                abs(self._number(item.get("availableBalance"))),
+            )
+
+        # Az EEA Futures Credits módban a BTCUSDC kontraktus ára továbbra is
+        # USDC-ben értendő, de a tárca, a margin és a P/L BNFCR-ben szerepel.
+        # Ilyenkor a külön USDC sor jellemzően nulla, a tényleges fedezet pedig
+        # a BNFCR soron érkezik.
+        balance = (
+            bnfcr
+            if bnfcr is not None and (usdc is None or balance_magnitude(bnfcr) > balance_magnitude(usdc))
+            else usdc
         )
-        if usdc is None:
-            raise BinanceApiError("A Binance USDⓈ-M fiókban nem található USDC-egyenleg.")
+        if balance is None:  # A fenti ellenőrzés miatt csak a típusellenőrző kedvéért.
+            raise BinanceApiError("A Binance USDⓈ-M egyenlegsora hiányzik.")
+        balance_asset = str(balance.get("asset") or "USDC").upper()
 
         open_positions: list[dict[str, Any]] = []
         for item in positions:
@@ -92,24 +113,27 @@ class BinanceUsdmClient:
                     "leverage": int(self._number(item.get("leverage")) or 1),
                     "margin_type": str(item.get("marginType") or ""),
                     "margin_asset": str(item.get("marginAsset") or "USDC"),
+                    "pnl_asset": balance_asset,
                     "update_time": int(self._number(item.get("updateTime"))),
                 }
             )
 
-        wallet_balance = self._number(usdc.get("walletBalance"))
-        unrealized_pnl = self._number(usdc.get("unrealizedProfit"))
+        wallet_balance = self._number(balance.get("walletBalance"))
+        unrealized_pnl = self._number(balance.get("unrealizedProfit"))
         return {
             "connected": True,
             "source": "binance-usdm",
-            "asset": "USDC",
+            "asset": balance_asset,
+            "quote_asset": "USDC",
+            "credit_mode": balance_asset == "BNFCR",
             "symbol": symbol,
             "wallet_balance": wallet_balance,
-            "available_balance": self._number(usdc.get("availableBalance")),
-            "cross_wallet_balance": self._number(usdc.get("crossWalletBalance")),
+            "available_balance": self._number(balance.get("availableBalance")),
+            "cross_wallet_balance": self._number(balance.get("crossWalletBalance")),
             "unrealized_pnl": unrealized_pnl,
-            "margin_balance": self._number(usdc.get("marginBalance")) or wallet_balance + unrealized_pnl,
-            "max_withdraw_amount": self._number(usdc.get("maxWithdrawAmount")),
-            "margin_available": bool(usdc.get("marginAvailable", True)),
+            "margin_balance": self._number(balance.get("marginBalance")) or wallet_balance + unrealized_pnl,
+            "max_withdraw_amount": self._number(balance.get("maxWithdrawAmount")),
+            "margin_available": bool(balance.get("marginAvailable", True)),
             "can_trade": bool(account_info.get("canTrade", account_config.get("canTrade", False))),
             "position_mode": "hedge" if bool(account_config.get("dualSidePosition", False)) else "one_way",
             "multi_assets_margin": bool(account_config.get("multiAssetsMargin", False)),

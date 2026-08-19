@@ -16,4 +16,22 @@ return array(
     // Legalább 24 karakteres véletlen titok. Ugyanaz kerüljön a mini PC
     // robot.cfg fájljának web_state.runtime_token értékébe.
     'robot_runtime_token' => 'CSERELD_LE_EGY_HOSSZU_VELETLEN_TITOKRA_2026',
+
+    // Egyszeri első beállítás. Az auth_setup_token legalább 32 karakteres,
+    // véletlen titok legyen; a böngészőben csak az első jelszó létrehozásakor kell.
+    'auth_username' => 'admin',
+    'auth_setup_token' => 'CSERELD_LE_EGY_MASIK_32_KARAKTERES_VELETLEN_TITOKRA',
+
+    // A webapp pontos HTTPS-es domainje séma, port és elérési út nélkül.
+    // Domainváltáskor a passkey-ket újra regisztrálni kell.
+    'auth_rp_id' => 'sajatdomain.hu',
+    'auth_rp_name' => 'BTC/USDC robot',
+
+    // Normál böngésző: 15 perc inaktivitás, legfeljebb 1 óra.
+    'web_session_idle_seconds' => 900,
+    'web_session_absolute_seconds' => 3600,
+
+    // Telepített PWA + passkey: 12 óra inaktivitás, legfeljebb 24 óra.
+    'pwa_session_idle_seconds' => 43200,
+    'pwa_session_absolute_seconds' => 86400,
 );

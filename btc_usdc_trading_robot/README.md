@@ -8,7 +8,8 @@ Ez a mappa a webapptól teljesen különálló Python folyamat. A mini PC-n fog 
 A robot jelenlegi feladatai:
 
 - 1–60 másodperces ciklusban kéri a Binance USDⓈ-M BTCUSDC árat és gyertyákat;
-- hitelesített, aláírt végpontokról olvassa a valós USDC-egyenleget és a nyitott
+- hitelesített, aláírt végpontokról olvassa a valós USDC- vagy EEA Futures Credits
+  módban BNFCR-egyenleget és a nyitott
   USDⓈ-M pozíciókat;
 - kiszámítja a webappból választott EMA, Momentum, Mean reversion vagy Trend +
   Momentum jelzést;
@@ -42,7 +43,9 @@ lekérdezésekkel fut.
    `robot.cfg.example` alapján másold bele: `mode = live_read_only`, továbbá a
    `[binance_usdm]` részben az API-kulcs, secret és `BTCUSDC` szimbólum kell. Az
    első ellenőrzéshez a Binance-kulcson csak olvasási jogosultságot használj.
-   Töltsd ki az `url` és `runtime_url` címet, valamint a `runtime_token` titkot. A két URL
+   Töltsd ki az `url` és `runtime_url` címet, valamint a `runtime_token` titkot. Ugyanez
+   a titok legyen a webapp `api/config.php` fájljának `robot_runtime_token`
+   értéke; a robot ezzel olvassa a védett állapot-API-t is. A két URL
    ugyanazon webapphoz tartozik: ha például az oldal címe
    `https://sajatdomain.hu/robot/`, akkor a két cím rendre
    `https://sajatdomain.hu/robot/api/state.php` és
@@ -62,14 +65,15 @@ lekérdezésekkel fut.
 Leállítás: `Ctrl+C`. A későbbi, 0–24-es telepítésnél ezt Windows Feladatütemező
 vagy szolgáltatás indítja automatikusan a gép indulásakor.
 
-Az első sikeres `--once` próba után a webappban a valós USDC-tárcaegyenlegnek,
+Az első sikeres `--once` próba után a webappban a valós USDC- (EEA Futures Credits
+módban BNFCR-) tárcaegyenlegnek,
 az elérhető egyenlegnek és az esetleges BTCUSDC pozíciónak kell megjelennie.
 Hibás kulcs, IP-korlátozás vagy jogosultság esetén a robot csak hibastátuszt ír;
 megbízást nem próbál küldeni.
 
 ## Webes védelem
 
-A webappot és különösen az `api` útvonalat célszerű jelszóval védeni. Ha HTTP
-Basic Auth van beállítva, a robot `robot.cfg` fájljában is töltsd ki a
-`username` és `password` értékeket. Ezek a hitelesítési adatok csak a mini PC-n
-maradnak; a konfigurációt a `.gitignore` kizárja.
+A webapp böngészős elérését saját PHP-session és passkey-védelem kezeli. A mini
+PC nem használja a webes jelszót: a `runtime_token` kerül az `X-Robot-Token`
+fejlécbe. Ha a tárhelyen ezen felül HTTP Basic Auth is aktív, a `username` és
+`password` mezők továbbra is használhatók; ezek csak a mini PC-n maradnak.

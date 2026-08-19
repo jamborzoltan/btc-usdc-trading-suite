@@ -36,6 +36,9 @@
     const el = id => document.getElementById(id);
     // Az USDC stabilcoin, nem ISO 4217 pénznemkód; ezért a feliratot kézzel tesszük hozzá.
     const money = value => `${new Intl.NumberFormat("hu-HU", { minimumFractionDigits:2, maximumFractionDigits:2 }).format(value)} USDC`;
+    const assetMoney = (value, asset = "USDC") => Number.isFinite(Number(value))
+      ? `${new Intl.NumberFormat("hu-HU", { minimumFractionDigits:2, maximumFractionDigits:2 }).format(Number(value))} ${String(asset || "USDC").toUpperCase()}`
+      : "—";
     const usdc = value => Number.isFinite(Number(value)) ? money(Number(value)) : "—";
     const num = value => new Intl.NumberFormat("hu-HU", { maximumFractionDigits: 4 }).format(value);
     const safeHtml = value => String(value).replace(/[&<>"']/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" })[character]);
@@ -82,7 +85,8 @@
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), SHARED_STATE_TIMEOUT_MS);
       try {
-        return await fetch(url, { cache:"no-store", ...options, signal:controller.signal });
+        if (!window.BtcAuth) throw new Error("A hitelesítési modul nem érhető el.");
+        return await window.BtcAuth.secureFetch(url, { cache:"no-store", ...options, signal:controller.signal });
       } finally {
         clearTimeout(timeout);
       }
@@ -392,21 +396,25 @@
       el("profitFadeCloseRange").disabled = !profitFadeEnabled;
       el("confirmStopClose").checked = bot.stopOnCandleClose;
       const account = latestBinanceAccount;
+      const balanceAsset = String(account?.asset || "USDC").toUpperCase();
       const positions = Array.isArray(account?.positions) ? account.positions : [];
       const position = positions.find(item => item?.symbol === "BTCUSDC") || positions[0] || null;
       const marginBalance = Number(account?.margin_balance);
-      el("botValue").textContent = Number.isFinite(marginBalance) ? money(marginBalance) : "—";
+      el("botValue").textContent = Number.isFinite(marginBalance) ? assetMoney(marginBalance, balanceAsset) : "—";
+      el("botValueLabel").textContent = `Binance margin (${balanceAsset})`;
       const totalUnrealized = Number(account?.unrealized_pnl);
       el("botPnlValue").textContent = Number.isFinite(totalUnrealized)
-        ? `${totalUnrealized >= 0 ? "+" : ""}${money(totalUnrealized)}`
+        ? `${totalUnrealized >= 0 ? "+" : ""}${assetMoney(totalUnrealized, balanceAsset)}`
         : "—";
+      el("botPnlLabel").textContent = `${balanceAsset} nem realizált P/L`;
       el("botPnlValue").className = `value ${totalUnrealized > 0 ? "positive" : totalUnrealized < 0 ? "negative" : ""}`;
       const markPrice = Number(position?.mark_price) || price || latestStrategy?.price || null;
       if (position) {
         const positionPnl = Number(position.unrealized_pnl) || 0;
         const positionMarginValue = Number(position.initial_margin) || 0;
         const positionPnlPercent = positionMarginValue ? positionPnl / positionMarginValue * 100 : 0;
-        el("positionPnlValue").textContent = `${positionPnl >= 0 ? "+" : ""}${money(positionPnl)} · ${positionPnlPercent >= 0 ? "+" : ""}${positionPnlPercent.toFixed(2).replace(".", ",")}%`;
+        const positionPnlAsset = String(position.pnl_asset || balanceAsset).toUpperCase();
+        el("positionPnlValue").textContent = `${positionPnl >= 0 ? "+" : ""}${assetMoney(positionPnl, positionPnlAsset)} · ${positionPnlPercent >= 0 ? "+" : ""}${positionPnlPercent.toFixed(2).replace(".", ",")}%`;
         el("positionPnlValue").className = `value ${positionPnl > 0 ? "positive" : positionPnl < 0 ? "negative" : ""}`;
       } else {
         el("positionPnlValue").textContent = "Nincs nyitott pozíció";
@@ -519,16 +527,20 @@
         el("binanceAccountStatus").textContent = worker?.message || "Indítsd el a külön Python robotot a live_read_only konfigurációval.";
         return;
       }
+      const balanceAsset = String(account.asset || "USDC").toUpperCase();
+      el("binanceTitle").textContent = balanceAsset === "BNFCR"
+        ? "Binance USDⓈ-M · Futures Credits (BNFCR)"
+        : `Binance USDⓈ-M · valós ${balanceAsset} számla`;
       setBinanceValues({
-        wallet:usdc(account.wallet_balance), available:usdc(account.available_balance),
-        unrealized:usdc(account.unrealized_pnl), unrealizedValue:account.unrealized_pnl,
-        margin:usdc(account.margin_balance),
+        wallet:assetMoney(account.wallet_balance, balanceAsset), available:assetMoney(account.available_balance, balanceAsset),
+        unrealized:assetMoney(account.unrealized_pnl, balanceAsset), unrealizedValue:account.unrealized_pnl,
+        margin:assetMoney(account.margin_balance, balanceAsset),
       });
       const openPositions = Array.isArray(account.positions) ? account.positions : [];
       positions.innerHTML = openPositions.length ? openPositions.map(position => {
         const direction = position.side === "long" ? "Long" : "Short";
         const pnl = Number(position.unrealized_pnl);
-        return `<tr><td data-label="Szimbólum">${safeHtml(position.symbol)}</td><td data-label="Irány" class="${direction === "Long" ? "positive" : "negative"}">${direction}</td><td data-label="Mennyiség">${num(Math.abs(position.quantity))}</td><td data-label="Belépő">${usdc(position.entry_price)}</td><td data-label="Mark ár">${usdc(position.mark_price)}</td><td data-label="Nem realizált P/L" class="${pnl > 0 ? "positive" : pnl < 0 ? "negative" : ""}">${usdc(pnl)}</td></tr>`;
+        return `<tr><td data-label="Szimbólum">${safeHtml(position.symbol)}</td><td data-label="Irány" class="${direction === "Long" ? "positive" : "negative"}">${direction}</td><td data-label="Mennyiség">${num(Math.abs(position.quantity))}</td><td data-label="Belépő">${usdc(position.entry_price)}</td><td data-label="Mark ár">${usdc(position.mark_price)}</td><td data-label="Nem realizált P/L" class="${pnl > 0 ? "positive" : pnl < 0 ? "negative" : ""}">${assetMoney(pnl, position.pnl_asset || balanceAsset)}</td></tr>`;
       }).join("") : '<tr><td colspan="6" class="empty">Nincs nyitott USDⓈ-M pozíció.</td></tr>';
       const fetchedAt = new Date(account.fetched_at);
       const fetchedLabel = Number.isNaN(fetchedAt.valueOf())
@@ -539,7 +551,7 @@
       const timeout = Math.max(MIN_WORKER_HEARTBEAT_TIMEOUT_MS, Math.max(1, Number(worker?.poll_seconds) || 5) * 3000);
       el("binanceAccountStatus").textContent = heartbeatAge > timeout
         ? `FIGYELEM: az adat elavult · utolsó Binance-frissítés: ${fetchedLabel} · a Python robot nem ad friss szívverést.`
-        : `Binance USDC az irányadó · frissítve: ${fetchedLabel} · mód: csak olvasás · pozíciómód: ${account.position_mode === "hedge" ? "hedge" : "one-way"}.`;
+        : `Binance ${balanceAsset} az irányadó · frissítve: ${fetchedLabel} · mód: csak olvasás · pozíciómód: ${account.position_mode === "hedge" ? "hedge" : "one-way"}.`;
     }
 
     function activateBrowserMarketData() {
@@ -1018,4 +1030,8 @@
       setInterval(refreshWorkerRuntime, 1000);
     }
     registerProgressiveWebApp();
-    startApplication();
+    (async () => {
+      if (!window.BtcAuth) return;
+      const authenticated = await window.BtcAuth.requireAuthentication();
+      if (authenticated) await startApplication();
+    })();

@@ -1,6 +1,35 @@
     :root { color-scheme: dark; --page:#0b1020; --card:#141c31; --soft:#202b47; --text:#f1f5ff; --muted:#9aa8c3; --blue:#5ea0ff; --green:#37d399; --red:#fb7185; --line:#2a385a; --bottom-safe-area:env(safe-area-inset-bottom,0px); }
     * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at 10% 0%,#172654 0,var(--page) 38rem); }
+    body:not(.auth-ready) > main,
+    body:not(.auth-ready) > .mysql-connection-indicator,
+    body:not(.auth-ready) > .chart-window,
+    body:not(.auth-ready) > .strategy-action-bar,
+    body:not(.auth-ready) > .strategy-bottom-bar { display:none !important; }
+    .auth-gate { position:fixed; z-index:1000; inset:0; display:none; align-items:center; justify-content:center; overflow:auto; padding:max(24px,env(safe-area-inset-top,0px)) max(18px,env(safe-area-inset-right,0px)) max(24px,env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px)); background:radial-gradient(circle at 50% 0%,#1d3270 0,#0b1020 34rem); }
+    body.auth-pending .auth-gate,body.auth-locked .auth-gate { display:flex; }
+    .auth-card { width:min(100%,430px); padding:28px; background:rgba(20,28,49,.98); border:1px solid #3b5795; border-radius:18px; box-shadow:0 24px 70px rgba(0,0,0,.45); }
+    .auth-brand { width:48px; height:48px; display:grid; place-items:center; margin:0 auto 15px; color:#fff; background:#f59e0b; border-radius:50%; font-size:1.65rem; font-weight:850; box-shadow:0 0 0 6px rgba(245,158,11,.12); }
+    .auth-card h1 { margin:0; text-align:center; }
+    .auth-lead,.auth-checking { margin:8px 0 0; color:var(--muted); text-align:center; }
+    .auth-panel-content { margin-top:23px; }
+    body.auth-pending .auth-panel-content { display:none; }
+    body:not(.auth-pending) .auth-checking { display:none; }
+    .auth-form { display:grid; gap:8px; }
+    .auth-form label { margin:5px 0 0; }
+    .auth-form input { min-height:46px; }
+    .auth-primary,.auth-passkey { width:100%; min-height:46px; margin-top:10px; background:#2757a7; }
+    .auth-passkey { background:#147a58; }
+    .auth-setup h2 { margin:0 0 2px; color:var(--text); font-size:1.08rem; text-transform:none; letter-spacing:0; }
+    .auth-setup p { margin:0 0 7px; color:var(--muted); font-size:.82rem; }
+    .auth-message { min-height:20px; margin:13px 0 0; color:var(--green); font-size:.82rem; text-align:center; }
+    .auth-message.error { color:var(--red); }
+    .auth-gate [hidden],.auth-toolbar[hidden] { display:none !important; }
+    .auth-toolbar { position:fixed; z-index:31; top:10px; right:max(12px,env(safe-area-inset-right,0px)); display:flex; align-items:center; gap:7px; max-width:calc(100vw - 24px); padding:5px 6px 5px 10px; color:var(--muted); background:rgba(13,20,39,.96); border:1px solid var(--line); border-radius:11px; box-shadow:0 6px 18px rgba(0,0,0,.24); font-size:.72rem; }
+    .auth-toolbar span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .auth-toolbar button { flex:0 0 auto; padding:6px 8px; font-size:.7rem; }
+    #registerPasskeyButton { background:#147a58; }
+    #logoutButton { background:#92394a; }
     main { max-width:1100px; margin:auto; padding:68px 20px calc(126px + var(--bottom-safe-area)); }
     .mysql-connection-indicator { position:fixed; z-index:30; top:12px; left:12px; display:flex; align-items:center; gap:7px; padding:7px 10px; color:var(--text); background:rgba(13,20,39,.96); border:1px solid var(--line); border-radius:999px; box-shadow:0 6px 18px rgba(0,0,0,.24); font-size:.74rem; font-weight:700; }
     .mysql-connection-dot { width:8px; height:8px; flex:0 0 8px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 3px rgba(154,168,195,.14); }
@@ -181,3 +210,10 @@
       #history td.empty::before { content:none; }
     }
     @media (max-width:720px) { main { padding:62px 14px calc(126px + var(--bottom-safe-area)); } .top { display:block; } .pill { display:inline-block; margin-top:12px; } .grid,.lower,.strategy-grid,.binance-grid,.futures-management,.manual-futures,.margin-funding { grid-template-columns:1fr; } .chart-window-header,.strategy-head,.binance-head { display:block; } .chart-indicators { margin:8px 0 0; } .timeframes { margin-top:8px; } .strategy-controls { justify-content:flex-start; margin-top:12px; } .strategy-toggle { margin-top:0; } .leverage-control,.margin-control,.stop-control,.trailing-control,.partial-take-profit-control,.partial-close-control,.profit-fade-control,.profit-fade-close-control,.strategy-select { flex:1; } .manual-close { margin-left:0; } .margin-funding button { width:100%; } .binance-refresh { margin-top:12px; } .strategy-action-bar { gap:5px; padding:0 8px; } .bottom-auto-toggle { gap:6px; padding:5px 6px; } .bottom-auto-toggle-label { font-size:.7rem; } .bottom-auto-toggle-state { min-width:17px; font-size:.66rem; } .bottom-strategy-select { flex-basis:116px; min-width:104px; } .bottom-strategy-select select { padding-left:5px; padding-right:18px; font-size:.68rem; } .bottom-interval-select { flex-basis:76px; min-width:72px; } .strategy-bottom-item { padding:6px 8px; } .strategy-bottom-item .value { font-size:.76rem; } .strategy-signal { font-size:.65rem; } .strategy-signal.active { font-size:calc(.65rem + 1px); } .card { padding:16px; } }
+    @media (max-width:560px) {
+      .auth-card { padding:23px 18px; }
+      .auth-toolbar { top:max(8px,env(safe-area-inset-top,0px)); left:10px; right:10px; justify-content:flex-end; }
+      .auth-toolbar span { margin-right:auto; }
+      .mysql-connection-indicator { top:53px; }
+      main { padding-top:96px; }
+    }

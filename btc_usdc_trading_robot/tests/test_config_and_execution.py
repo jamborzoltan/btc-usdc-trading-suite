@@ -6,6 +6,7 @@ import unittest
 
 from robot.config import ConfigurationError, load_settings
 from robot.execution import LiveTradingLocked, LiveTradingPolicy
+from robot.state_store import RemoteStateStore
 
 
 VALID_CONFIG = """
@@ -53,6 +54,13 @@ class ExecutionGateTests(unittest.TestCase):
         policy = LiveTradingPolicy(False, "", 100, 20)
         with self.assertRaises(LiveTradingLocked):
             policy.assert_order_allowed(10, 0, {"connected": True, "can_trade": True})
+
+
+class RemoteStateAuthenticationTests(unittest.TestCase):
+    def test_state_reads_use_the_machine_token(self) -> None:
+        token = "123456789012345678901234"
+        store = RemoteStateStore("https://example.com/api/state.php", token)
+        self.assertEqual(store.headers["X-Robot-Token"], token)
 
 
 if __name__ == "__main__":

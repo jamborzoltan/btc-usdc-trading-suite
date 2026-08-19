@@ -74,6 +74,42 @@ class BinanceAccountSnapshotTests(unittest.TestCase):
         self.assertNotIn("api_key", snapshot)
         self.assertNotIn("api_secret", snapshot)
 
+    def test_bnfcr_credit_balance_is_used_when_usdc_row_is_zero(self) -> None:
+        client = StubBinanceClient()
+        original_signed_get = client._signed_get
+
+        def credit_response(path, params=None):
+            if path == "/fapi/v3/account":
+                return {
+                    "assets": [
+                        {
+                            "asset": "USDC",
+                            "walletBalance": "0",
+                            "unrealizedProfit": "0",
+                            "marginBalance": "0",
+                            "availableBalance": "0",
+                        },
+                        {
+                            "asset": "BNFCR",
+                            "walletBalance": "30.68581051",
+                            "unrealizedProfit": "0",
+                            "marginBalance": "30.68581051",
+                            "availableBalance": "30.68581051",
+                        },
+                    ],
+                }
+            return original_signed_get(path, params)
+
+        client._signed_get = credit_response  # type: ignore[method-assign]
+        snapshot = client.account_snapshot("BTCUSDC")
+
+        self.assertEqual(snapshot["asset"], "BNFCR")
+        self.assertEqual(snapshot["quote_asset"], "USDC")
+        self.assertTrue(snapshot["credit_mode"])
+        self.assertEqual(snapshot["wallet_balance"], 30.68581051)
+        self.assertEqual(snapshot["available_balance"], 30.68581051)
+        self.assertEqual(snapshot["positions"][0]["pnl_asset"], "BNFCR")
+
 
 if __name__ == "__main__":
     unittest.main()

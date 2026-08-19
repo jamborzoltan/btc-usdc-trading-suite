@@ -23,6 +23,7 @@ class ContinuousRobot:
         self.settings = settings
         self.store = RemoteStateStore(
             settings.state_url,
+            settings.runtime_token,
             settings.username,
             settings.password,
         )

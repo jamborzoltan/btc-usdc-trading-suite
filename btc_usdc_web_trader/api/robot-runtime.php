@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth-common.php';
+
 /*
  * A mini PC-n futó robot rövid életjelét külön rekordban tárolja.
  * Így az állapotfrissítés nem írhatja felül a webapp kapcsolóinak értékét.
@@ -8,29 +10,6 @@ declare(strict_types=1);
  */
 
 const MAX_RUNTIME_BYTES = 65536;
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, max-age=0');
-
-function respondJson(int $status, array $payload): void
-{
-    http_response_code($status);
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
-}
-
-function loadConfig(): array
-{
-    $configPath = __DIR__ . DIRECTORY_SEPARATOR . 'config.php';
-    if (!is_file($configPath)) {
-        respondJson(503, array('error' => 'A MySQL konfiguráció még nincs beállítva.'));
-    }
-    $config = require $configPath;
-    if (!is_array($config)) {
-        respondJson(503, array('error' => 'Érvénytelen MySQL konfiguráció.'));
-    }
-    return $config;
-}
 
 function readRuntimeRequest(): array
 {
@@ -57,24 +36,23 @@ function readRuntimeRequest(): array
     return array('runtime_json' => $runtimeJson);
 }
 
-$config = loadConfig();
-$stateKey = (string) ($config['state_key'] ?? 'btc-usdc-sajat-robot');
-if (!preg_match('/^[A-Za-z0-9_.-]{1,64}$/', $stateKey)) {
-    respondJson(503, array('error' => 'Érvénytelen közös állapotazonosító.'));
+$config = loadAppConfig();
+$stateKey = validatedStateKey($config);
+$requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+if ($requestMethod !== 'GET' && $requestMethod !== 'POST') {
+    header('Allow: GET, POST');
+    respondJson(405, array('error' => 'Csak GET és POST kérés engedélyezett.'));
+}
+if ($requestMethod === 'GET') {
+    requireUserSession($config);
+} elseif ($requestMethod === 'POST') {
+    requireRobotToken($config);
 }
 
 try {
-    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-    $connection = new mysqli(
-        (string) ($config['db_host'] ?? ''),
-        (string) ($config['db_user'] ?? ''),
-        (string) ($config['db_password'] ?? ''),
-        (string) ($config['db_name'] ?? ''),
-        (int) ($config['db_port'] ?? 3306)
-    );
-    $connection->set_charset('utf8mb4');
+    $connection = openDatabase($config);
 
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    if ($requestMethod === 'GET') {
         $statement = $connection->prepare(
             'SELECT payload, updated_at FROM btc_usdc_robot_runtime WHERE state_key = ? LIMIT 1'
         );
@@ -91,17 +69,6 @@ try {
             throw new RuntimeException('A tárolt robot-státusz sérült.');
         }
         respondJson(200, array('runtime' => $runtime, 'updatedAt' => $updatedAt));
-    }
-
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        header('Allow: GET, POST');
-        respondJson(405, array('error' => 'Csak GET és POST kérés engedélyezett.'));
-    }
-
-    $expectedToken = (string) ($config['robot_runtime_token'] ?? '');
-    $providedToken = (string) ($_SERVER['HTTP_X_ROBOT_TOKEN'] ?? '');
-    if (strlen($expectedToken) < 24 || !hash_equals($expectedToken, $providedToken)) {
-        respondJson(403, array('error' => 'Érvénytelen robot-státusz hitelesítés.'));
     }
 
     $request = readRuntimeRequest();

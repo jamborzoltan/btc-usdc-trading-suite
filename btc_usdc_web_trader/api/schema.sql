@@ -12,3 +12,36 @@ CREATE TABLE IF NOT EXISTS btc_usdc_robot_runtime (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (state_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS btc_usdc_auth_users (
+  state_key VARCHAR(64) NOT NULL,
+  username VARCHAR(64) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  password_changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (state_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS btc_usdc_passkeys (
+  state_key VARCHAR(64) NOT NULL,
+  credential_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  credential_id TEXT CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  user_handle VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  public_key TEXT NOT NULL,
+  sign_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  label VARCHAR(64) NOT NULL,
+  transports VARCHAR(512) NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_used_at TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (state_key, credential_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS btc_usdc_auth_attempts (
+  state_key VARCHAR(64) NOT NULL,
+  client_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  failures INT UNSIGNED NOT NULL DEFAULT 0,
+  first_attempt_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  locked_until TIMESTAMP NULL DEFAULT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (state_key, client_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -9,6 +9,7 @@ komponenssel:
 ## Jelenlegi biztonsági állapot
 
 A Python worker `live_read_only` módban valódi Binance USDⓈ-M USDC-egyenleget
+(EEA Futures Credits módban BNFCR-egyenleget)
 és BTCUSDC pozíciókat olvas. Valódi megbízást még nem küldhet: az order-réteg
 kód szinten zárolt, a webapp pedig nem tartalmaz Binance API-kulcsot.
 
@@ -45,6 +46,7 @@ cd .\btc_usdc_trading_robot
 py -m unittest discover -s tests -v
 
 cd ..\btc_usdc_web_trader
+node --check auth.js
 node --check app.js
 ```
 

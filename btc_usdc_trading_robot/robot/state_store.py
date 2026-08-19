@@ -35,13 +35,18 @@ class RemoteStateStore:
     def __init__(
         self,
         url: str,
+        robot_token: str,
         username: str | None = None,
         password: str | None = None,
         timeout_seconds: float = 10,
     ) -> None:
         self.url = url
         self.timeout_seconds = timeout_seconds
-        self.headers = {"Accept": "application/json", "User-Agent": "BTC-USDC-Robot/0.1"}
+        self.headers = {
+            "Accept": "application/json",
+            "User-Agent": "BTC-USDC-Robot/0.3",
+            "X-Robot-Token": robot_token,
+        }
         if username and password:
             token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
             self.headers["Authorization"] = f"Basic {token}"

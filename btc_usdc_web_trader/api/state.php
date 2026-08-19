@@ -1,22 +1,14 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth-common.php';
+
 /*
  * Közös, egyfelhasználós robotállapot API.
  * Minden adatbázis-művelet előkészített mysqli lekérdezést használ.
  */
 
 const MAX_PAYLOAD_BYTES = 1048576;
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, max-age=0');
-
-function respondJson(int $status, array $payload): void
-{
-    http_response_code($status);
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
-}
 
 function readCurrentState(mysqli $connection, string $stateKey): ?array
 {
@@ -84,43 +76,30 @@ function readRequestPayload(): array
     );
 }
 
-$configPath = __DIR__ . DIRECTORY_SEPARATOR . 'config.php';
-if (!is_file($configPath)) {
-    respondJson(503, array('error' => 'A közös MySQL tárolás még nincs beállítva.'));
+$config = loadAppConfig();
+$stateKey = validatedStateKey($config);
+$requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+if ($requestMethod !== 'GET' && $requestMethod !== 'POST') {
+    header('Allow: GET, POST');
+    respondJson(405, array('error' => 'Csak GET és POST kérés engedélyezett.'));
 }
-
-$config = require $configPath;
-if (!is_array($config)) {
-    respondJson(503, array('error' => 'Érvénytelen MySQL konfiguráció.'));
-}
-
-$stateKey = (string) ($config['state_key'] ?? 'btc-usdc-sajat-robot');
-if (!preg_match('/^[A-Za-z0-9_.-]{1,64}$/', $stateKey)) {
-    respondJson(503, array('error' => 'Érvénytelen közös állapotazonosító.'));
+if ($requestMethod === 'GET') {
+    if (!hasValidRobotToken($config)) {
+        requireUserSession($config);
+    }
+} elseif ($requestMethod === 'POST') {
+    requireUserSession($config, true);
 }
 
 try {
-    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-    $connection = new mysqli(
-        (string) ($config['db_host'] ?? ''),
-        (string) ($config['db_user'] ?? ''),
-        (string) ($config['db_password'] ?? ''),
-        (string) ($config['db_name'] ?? ''),
-        (int) ($config['db_port'] ?? 3306)
-    );
-    $connection->set_charset('utf8mb4');
+    $connection = openDatabase($config);
 
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    if ($requestMethod === 'GET') {
         $state = readCurrentState($connection, $stateKey);
         respondJson(200, array(
             'portfolio' => $state['portfolio'] ?? null,
             'revision' => $state['revision'] ?? 0,
         ));
-    }
-
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        header('Allow: GET, POST');
-        respondJson(405, array('error' => 'Csak GET és POST kérés engedélyezett.'));
     }
 
     $request = readRequestPayload();

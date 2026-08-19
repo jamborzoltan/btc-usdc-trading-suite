@@ -8,6 +8,7 @@ privát, és a hozzáférést csak a szükséges GitHub-fiókok kapják meg.
 - Binance API-kulcs vagy API-secret;
 - MySQL felhasználónév vagy jelszó;
 - `robot_runtime_token` értéke;
+- `auth_setup_token` értéke vagy a webapp jelszava;
 - valódi `robot.cfg`, `binance.cfg`, `.env` vagy `api/config.php` fájl;
 - olyan napló, amely hitelesítési adatot vagy aláírt API-kérést tartalmaz.
 

@@ -15,7 +15,42 @@
   A webtárhely a statikus fájlt tölti be; a stílusok a styles.css-ben,
   a böngészőoldali működési logika az app.js-ben található.
 -->
-<body>
+<body class="auth-pending">
+  <section class="auth-gate" id="authGate" aria-labelledby="authTitle" aria-live="polite">
+    <div class="auth-card">
+      <div class="auth-brand" aria-hidden="true">₿</div>
+      <h1 id="authTitle">BTC/USDC robot</h1>
+      <p class="auth-lead">A valós számlaadatok megtekintéséhez jelentkezz be.</p>
+      <p class="auth-checking" id="authChecking">Biztonságos munkamenet ellenőrzése…</p>
+      <div class="auth-panel-content">
+        <form class="auth-form" id="loginForm">
+          <label for="loginUsername">Felhasználónév</label>
+          <input id="loginUsername" name="username" type="text" autocomplete="username" maxlength="64" required>
+          <label for="loginPassword">Jelszó</label>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" maxlength="128" required>
+          <button class="auth-primary" type="submit">Bejelentkezés</button>
+        </form>
+        <button class="auth-passkey" id="passkeyLoginButton" type="button" hidden>Belépés Face ID-val / passkey-jel</button>
+        <form class="auth-form auth-setup" id="setupForm" hidden>
+          <h2>Első biztonsági beállítás</h2>
+          <p>Hozd létre az egyetlen webapp-felhasználót a config.php-ban megadott egyszeri beállítási tokennel.</p>
+          <label for="setupUsername">Felhasználónév</label>
+          <input id="setupUsername" name="username" type="text" autocomplete="username" maxlength="64" required>
+          <label for="setupPassword">Új jelszó (legalább 12 karakter)</label>
+          <input id="setupPassword" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+          <label for="setupToken">Egyszeri beállítási token</label>
+          <input id="setupToken" name="setupToken" type="password" autocomplete="off" minlength="32" required>
+          <button class="auth-primary" type="submit">Biztonságos belépés létrehozása</button>
+        </form>
+        <p class="auth-message" id="authMessage" role="status"></p>
+      </div>
+    </div>
+  </section>
+  <div class="auth-toolbar" id="authToolbar" hidden>
+    <span id="authSessionLabel">Bejelentkezve</span>
+    <button id="registerPasskeyButton" type="button" hidden>Face ID beállítása</button>
+    <button id="logoutButton" type="button">Kilépés</button>
+  </div>
   <div class="mysql-connection-indicator checking" id="mysqlConnectionIndicator" role="status" aria-live="polite">
     <span class="mysql-connection-dot" aria-hidden="true"></span>
     <span id="mysqlConnectionText">MySQL kapcsolat ellenőrzése…</span>
@@ -27,7 +62,7 @@
     </header>
     <section class="card binance" id="binancePanel" aria-labelledby="binanceTitle">
       <div class="binance-head">
-        <div><h2 id="binanceTitle">Binance USDⓈ-M · valós USDC számla</h2><p class="hint">A mini PC hitelesített Binance-kapcsolatából érkezik. A böngésző nem kap API-kulcsot.</p></div>
+        <div><h2 id="binanceTitle">Binance USDⓈ-M · valós futures számla</h2><p class="hint">A mini PC hitelesített Binance-kapcsolatából érkezik. A böngésző nem kap API-kulcsot.</p></div>
         <span class="execution-lock">Megbízásküldés zárolva</span>
       </div>
       <div class="binance-grid">
@@ -59,7 +94,7 @@
         <div class="strategy-metric position-metric"><div class="label">Futures pozíció</div><div class="value" id="positionValue">—</div><div class="position-prices"><span><small>Belépési ár</small><strong id="entryPriceValue">—</strong></span><span><small>Jelenlegi ár</small><strong id="currentPriceValue">—</strong></span><span><small>Becsült likvidár</small><strong id="liquidationPriceValue">—</strong></span></div></div>
         <div class="strategy-metric"><div class="label">Binance pozíció P/L</div><div class="value" id="positionPnlValue">—</div></div>
         <div class="strategy-metric"><div class="label">Bot stop állapota</div><div class="value" id="stopPriceValue">Zárolva</div></div>
-        <div class="strategy-metric"><div class="label">USDC nem realizált P/L</div><div class="value" id="botPnlValue">—</div></div>
+        <div class="strategy-metric"><div class="label" id="botPnlLabel">USDC nem realizált P/L</div><div class="value" id="botPnlValue">—</div></div>
       </div>
       <p class="strategy-reason" id="strategyReason">A stratégia jelzésre vár…</p>
       <p class="strategy-status" id="strategyStatus">A stratégia kikapcsolva. A Binance-számla olvasása ettől függetlenül működik.</p>
@@ -101,8 +136,9 @@
     <div class="strategy-bottom-item" aria-live="polite"><small>BTC / USDC · <span id="change">—</span></small><strong class="value" id="price">—</strong></div>
     <div class="strategy-bottom-item strategy-signals-item"><small>Stratégiajelzések · zöld: aktív</small><div class="strategy-signals" id="allStrategySignals" aria-live="polite"></div></div>
     <div class="strategy-bottom-item"><small id="trendLabel">Piaci kontextus</small><strong class="value" id="trendValue">—</strong></div>
-    <div class="strategy-bottom-item"><small>Binance margin</small><strong class="value" id="botValue">—</strong></div>
+    <div class="strategy-bottom-item"><small id="botValueLabel">Binance margin</small><strong class="value" id="botValue">—</strong></div>
   </footer>
+  <script src="auth.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
