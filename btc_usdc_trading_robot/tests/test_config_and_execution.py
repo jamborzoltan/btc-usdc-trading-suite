@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from robot.config import ConfigurationError, load_settings
-from robot.execution import LiveTradingLocked, LiveTradingPolicy
+from robot.execution import LIVE_CONFIRMATION_PHRASE, LiveTradingLocked, LiveTradingPolicy
 from robot.state_store import RemoteStateStore
 
 
@@ -43,17 +43,49 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.binance_symbol, "BTCUSDC")
         self.assertFalse(settings.live_trading_enabled)
 
-    def test_live_switch_is_rejected_by_current_build(self) -> None:
+    def test_live_switch_without_mode_ack_and_limits_is_rejected(self) -> None:
         content = VALID_CONFIG.replace("enabled = false", "enabled = true")
         with self.assertRaises(ConfigurationError):
             self.load(content)
+
+    def test_fully_acknowledged_live_configuration_loads(self) -> None:
+        content = (
+            VALID_CONFIG.replace("mode = live_read_only", "mode = live")
+            .replace("enabled = false", "enabled = true")
+            .replace("max_order_notional_usdc = 0", "max_order_notional_usdc = 25")
+            .replace("max_daily_loss_usdc = 0", "max_daily_loss_usdc = 5")
+            .replace("[live_trading]\n", f"[live_trading]\nacknowledgement = {LIVE_CONFIRMATION_PHRASE}\n")
+        )
+        settings = self.load(content)
+        self.assertEqual(settings.mode, "live")
+        self.assertTrue(settings.live_trading_enabled)
+        self.assertEqual(settings.max_position_loss_percent, 50)
 
 
 class ExecutionGateTests(unittest.TestCase):
     def test_disabled_policy_always_rejects_orders(self) -> None:
         policy = LiveTradingPolicy(False, "", 100, 20)
         with self.assertRaises(LiveTradingLocked):
-            policy.assert_order_allowed(10, 0, {"connected": True, "can_trade": True})
+            policy.assert_entry_allowed(
+                10,
+                5,
+                0,
+                {"connected": True, "can_trade": True, "available_balance": 100},
+                10,
+            )
+
+    def test_daily_limit_blocks_entry_but_not_close(self) -> None:
+        policy = LiveTradingPolicy(True, LIVE_CONFIRMATION_PHRASE, 100, 20, 50)
+        account = {"connected": True, "can_trade": True, "available_balance": 100}
+        with self.assertRaises(LiveTradingLocked):
+            policy.assert_entry_allowed(10, 5, 20, account, 10)
+        policy.assert_close_allowed(account)
+
+    def test_pnl_stop_risk_blocks_entry(self) -> None:
+        policy = LiveTradingPolicy(True, LIVE_CONFIRMATION_PHRASE, 100, 20, 50)
+        account = {"connected": True, "can_trade": True, "available_balance": 100}
+        with self.assertRaises(LiveTradingLocked):
+            policy.assert_entry_allowed(100, 10, 0, account, 60)
 
 
 class RemoteStateAuthenticationTests(unittest.TestCase):

@@ -43,6 +43,7 @@ def calculate(
         "strategy_label": STRATEGY_LABELS[strategy_type],
         "interval": interval,
         "price": current_price,
+        "closed_candle_price": closes[-1],
         "candle_time": candle_time,
     }
 

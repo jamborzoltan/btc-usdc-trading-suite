@@ -20,6 +20,10 @@ fel a projekt teljes webes tartalmát, beleértve ezeket is:
 - az `api` mappa PHP-fájljai
 - a `vendor/lbuchs/webauthn` mappa és a `vendor/.htaccess`
 
+A friss `sw.js` új gyorsítótár-verziót használ, ezért az új Binance ihlette
+stílus és a chart kapcsoló a service worker aktiválása után a telepített PWA-ban
+is automatikusan lecseréli a korábbi alkalmazáshéjat.
+
 Ne töltsd fel a Python robot fájljait, a `robot.cfg` fájlt, build- és
 release-fájlokat. A `robot.cfg` tartalmazza a Binance-kulcsokat, ezért kizárólag
 a mini PC-n maradhat.
@@ -51,6 +55,8 @@ a valós Binance-runtime külön, olvasható oszlopokban és táblákban vannak.
    `btc_usdc_strategy_snapshot`, `btc_usdc_binance_account` és
    `btc_usdc_open_positions` tábla, továbbá változatlanul megmaradnak az auth-
    és passkey-táblák. A művelet nem törli a meglévő adatokat.
+   Már létező `btc_usdc_bot_settings` tábla esetén ugyanitt kerül be az új,
+   két tizedes `margin_usdc` oszlop is.
 3. A projekt `api` mappájában másold a `config.php.example` fájlt `config.php`
    néven, és töltsd ki a tárhelyes MySQL-adatokkal.
 4. A saját, már kitöltött `api/config.php` fájlodba másold át a minta új
@@ -90,7 +96,7 @@ az oldal a legfrissebb közös állapotot tölti vissza, nem írja felül csendb
 Az új `state.php` az első sikeres állapotolvasáskor átmásolja a régi
 `btc_usdc_robot_state.payload` beállításait a `btc_usdc_bot_settings` táblába,
 az eredeti `revision` megtartásával. Az új `robot-runtime.php` a mini PC első
-következő szívverésekor tranzakcióban feltölti a négy strukturált runtime-
+következő szívverésekor tranzakcióban feltölti az öt strukturált runtime-
 táblát. A böngésző és a Python robot API-formátuma közben nem változik.
 
 A régi `btc_usdc_robot_state` és `btc_usdc_robot_runtime` táblákat csak akkor
@@ -107,10 +113,23 @@ közvetlenül védi a konfigurációs fájlneveket.
 
 A feltöltött oldal a nyilvános Binance USDⓈ-M BTCUSDC ár- és gyertyaadatokat
 közvetlenül a böngészőből kéri le. A négy stratégia és a tervezett kockázati
-beállítások működnek; böngészős pozíciószimuláció nincs. A lebegő chart 394 CSS
-pixel szélességtől látható;
-az iPhone 16 álló nézetének megfelelő, 393 px-es vagy keskenyebb kijelzőn
-rejtve marad.
+beállítások működnek; böngészős pozíciószimuláció nincs. A lebegő chart a
+fejlécből bármely kijelzőméreten elrejthető és visszakapcsolható. A választást
+az adott böngésző vagy telepített PWA helyben megjegyzi; keskeny mobilnézetben
+a megjelenített diagram automatikusan a kijelző szélességéhez igazodik.
+
+A felületen a tervezett tőkeáttétel 1–125× között állítható, a tervezett
+felhasználás pedig konkrét USDC-összegként, két tizedes pontossággal írható be.
+Az 1–100% közötti stop-loss közvetlenül a pozíció becsült, tőkeáttételes
+PnL%-át jelenti; a hozzá tartozó közelítő BTC-ármozgás `stop PnL% / leverage`.
+Ez az arány a díjakat, fundingot, csúszást és maintenance margint nem tartalmazza.
+Read-only worker mellett ezek csak tervezési beállítások. A mini PC külön
+engedélyezett `live` workerével a következő belépés marginját és tőkeáttételét
+adják meg; a webapp önmagában soha nem küld Binance-megbízást.
+
+Az 1 órás és 1 napos RSI(14) divergenciakártyákat a mini PC számolja lezárt
+gyertyákból. A `btc_usdc_divergence_snapshot` tábla idősíkonként egy sort tárol.
+A bullish/bearish jelzés tájékoztató jellegű, nem vált ki automatikus ordert.
 
 A Binance USDⓈ-M fiókegyenleg panel a mini PC által a
 `api/robot-runtime.php` végpontba írt, megtisztított számlaképet mutatja. A
@@ -153,7 +172,11 @@ korlátot kap. Ezek az `api/config.php` fájlban rövidíthetők.
 - Az oldal internetkapcsolatot és elérhető Binance publikus API-t igényel.
 - A külön Python robotnak folyamatosan futnia kell a valós számlaadat
   frissítéséhez.
-- A jelenlegi `live_read_only` kiadás nem küld valódi tőzsdei megbízást.
+- A Python worker alapból `live_read_only`. A `live` mód csak a mini PC helyi,
+  gitből kizárt konfigurációjában, pontos acknowledgement mondattal és pozitív
+  veszteséglimitekkel oldható; részletek a Python projekt `README.md` fájljában.
+- A szoftveres stopokhoz a mini PC-nek, az internetnek és a Binance API-nak
+  folyamatosan működnie kell.
 
 A Binance API-kulcsot és secretet nem szabad webtárhelyre vagy böngészőbe
 feltölteni; ezek csak a mini PC `robot.cfg` fájljában lehetnek.

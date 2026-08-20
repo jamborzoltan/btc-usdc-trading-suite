@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title id="title">BTC/USDC robot</title>
-  <rect width="512" height="512" rx="112" fill="#0b1020"/>
-  <rect x="36" y="36" width="440" height="440" rx="88" fill="#172654" stroke="#5ea0ff" stroke-width="16"/>
-  <circle cx="256" cy="256" r="139" fill="#f59e0b"/>
-  <path d="M235 135h49c52 0 80 22 80 59 0 22-12 39-31 47 25 8 40 27 40 53 0 42-31 66-87 66h-51V135Zm42 43v43h18c18 0 28-8 28-22 0-14-10-21-29-21h-17Zm0 83v55h25c20 0 31-10 31-28 0-18-12-27-33-27h-23Z" fill="#0b1020"/>
-  <path d="M250 113v266M276 113v266" stroke="#f8d06a" stroke-width="18" stroke-linecap="round"/>
-  <path d="M128 407h256" stroke="#37d399" stroke-width="16" stroke-linecap="round"/>
+  <rect width="512" height="512" rx="112" fill="#0b0e11"/>
+  <rect x="36" y="36" width="440" height="440" rx="88" fill="#181a20" stroke="#2b3139" stroke-width="16"/>
+  <circle cx="256" cy="256" r="139" fill="#f0b90b"/>
+  <path d="M235 135h49c52 0 80 22 80 59 0 22-12 39-31 47 25 8 40 27 40 53 0 42-31 66-87 66h-51V135Zm42 43v43h18c18 0 28-8 28-22 0-14-10-21-29-21h-17Zm0 83v55h25c20 0 31-10 31-28 0-18-12-27-33-27h-23Z" fill="#0b0e11"/>
+  <path d="M250 113v266M276 113v266" stroke="#f8d33a" stroke-width="18" stroke-linecap="round"/>
+  <path d="M128 407h256" stroke="#0ecb81" stroke-width="16" stroke-linecap="round"/>
 </svg>

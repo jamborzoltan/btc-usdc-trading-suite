@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import configparser
+import math
 from pathlib import Path
 from urllib.parse import urlparse
+
+from .execution import LIVE_CONFIRMATION_PHRASE
 
 
 class ConfigurationError(ValueError):
@@ -28,6 +31,8 @@ class RobotSettings:
     live_acknowledgement: str
     max_order_notional_usdc: float
     max_daily_loss_usdc: float
+    max_position_loss_percent: float
+    execution_state_path: Path
 
 
 def load_settings(path: Path) -> RobotSettings:
@@ -43,14 +48,14 @@ def load_settings(path: Path) -> RobotSettings:
         raise ConfigurationError(f"A konfiguráció nem olvasható: {error}") from error
 
     mode = parser.get("robot", "mode", fallback="").strip().lower()
-    if mode != "live_read_only":
-        raise ConfigurationError("Ebben a fázisban kizárólag a mode = live_read_only engedélyezett.")
+    if mode not in {"live_read_only", "live"}:
+        raise ConfigurationError("A robot.mode értéke live_read_only vagy live lehet.")
 
     try:
         poll_seconds = parser.getfloat("robot", "poll_seconds", fallback=5)
     except ValueError as error:
         raise ConfigurationError("A poll_seconds szám legyen.") from error
-    if not 1 <= poll_seconds <= 60:
+    if not math.isfinite(poll_seconds) or not 1 <= poll_seconds <= 60:
         raise ConfigurationError("A poll_seconds értéke 1 és 60 másodperc közé essen.")
 
     state_url = parser.get("web_state", "url", fallback="").strip()
@@ -96,12 +101,35 @@ def load_settings(path: Path) -> RobotSettings:
     try:
         max_order_notional_usdc = parser.getfloat("live_trading", "max_order_notional_usdc", fallback=0)
         max_daily_loss_usdc = parser.getfloat("live_trading", "max_daily_loss_usdc", fallback=0)
+        max_position_loss_percent = parser.getfloat(
+            "live_trading", "max_position_loss_percent", fallback=50
+        )
     except ValueError as error:
         raise ConfigurationError("Az éles kereskedési limitek számok legyenek.") from error
+    state_file = parser.get(
+        "live_trading", "state_file", fallback="execution_state.json"
+    ).strip()
+    if not state_file:
+        raise ConfigurationError("A live_trading.state_file nem lehet üres.")
+    execution_state_path = Path(state_file)
+    if not execution_state_path.is_absolute():
+        execution_state_path = path.parent / execution_state_path
+
     if live_trading_enabled:
-        raise ConfigurationError(
-            "Az order-küldés ebben a verzióban még kód szinten zárolt; hagyd a live_trading.enabled értékét false-on."
-        )
+        if mode != "live":
+            raise ConfigurationError("Éles engedélyezéshez a robot.mode értéke live legyen.")
+        if live_acknowledgement != LIVE_CONFIRMATION_PHRASE:
+            raise ConfigurationError(
+                "Az éles kereskedéshez a dokumentált acknowledgement mondat pontosan szükséges."
+            )
+        if not math.isfinite(max_order_notional_usdc) or max_order_notional_usdc <= 0:
+            raise ConfigurationError("Éles módban pozitív max_order_notional_usdc kötelező.")
+        if not math.isfinite(max_daily_loss_usdc) or max_daily_loss_usdc <= 0:
+            raise ConfigurationError("Éles módban pozitív max_daily_loss_usdc kötelező.")
+        if not math.isfinite(max_position_loss_percent) or not 0 < max_position_loss_percent <= 100:
+            raise ConfigurationError("A max_position_loss_percent 0 és 100 közé essen.")
+    elif mode == "live":
+        raise ConfigurationError("A mode = live csak live_trading.enabled = true mellett használható.")
 
     return RobotSettings(
         mode=mode,
@@ -120,4 +148,6 @@ def load_settings(path: Path) -> RobotSettings:
         live_acknowledgement=live_acknowledgement,
         max_order_notional_usdc=max(0, max_order_notional_usdc),
         max_daily_loss_usdc=max(0, max_daily_loss_usdc),
+        max_position_loss_percent=max(0, max_position_loss_percent),
+        execution_state_path=execution_state_path,
     )

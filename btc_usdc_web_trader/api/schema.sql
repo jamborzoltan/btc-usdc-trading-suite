@@ -3,13 +3,13 @@
 
 CREATE TABLE IF NOT EXISTS btc_usdc_bot_settings (
   state_key VARCHAR(64) NOT NULL,
-  bot_version SMALLINT UNSIGNED NOT NULL DEFAULT 7,
+  bot_version SMALLINT UNSIGNED NOT NULL DEFAULT 9,
   enabled TINYINT(1) NOT NULL DEFAULT 0,
   strategy_type VARCHAR(32) NOT NULL DEFAULT 'trend',
   strategy_interval SMALLINT UNSIGNED NOT NULL DEFAULT 60,
   leverage SMALLINT UNSIGNED NOT NULL DEFAULT 1,
-  margin_percent DECIMAL(8,4) NOT NULL DEFAULT 20,
-  stop_loss_percent DECIMAL(8,4) NOT NULL DEFAULT 2,
+  margin_usdc DECIMAL(20,2) NOT NULL DEFAULT 20.00,
+  stop_loss_percent DECIMAL(8,4) NOT NULL DEFAULT 50,
   trailing_stop_percent DECIMAL(8,4) NOT NULL DEFAULT 1.5,
   partial_take_profit_percent DECIMAL(8,4) NOT NULL DEFAULT 0,
   partial_close_percent DECIMAL(8,4) NOT NULL DEFAULT 50,
@@ -22,9 +22,22 @@ CREATE TABLE IF NOT EXISTS btc_usdc_bot_settings (
   PRIMARY KEY (state_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Meglévő telepítésnél a CREATE TABLE nem ad új oszlopot a már létező
+-- táblához. A MariaDB-kompatibilis ALTER idempotensen hozzáadja az USDC mezőt;
+-- a korábbi margin_percent oszlop biztonsági okból megmarad, de az API nem írja.
+ALTER TABLE btc_usdc_bot_settings
+  ADD COLUMN IF NOT EXISTS margin_usdc DECIMAL(20,2) NOT NULL DEFAULT 20.00 AFTER leverage;
+
+-- A 9-es botverziótól a stop_loss_percent már közvetlenül a pozíció
+-- tőkeáttételes PnL%-át jelenti. A régi ármozgás%-ot egyszer alakítjuk át.
+UPDATE btc_usdc_bot_settings
+SET stop_loss_percent = LEAST(100, GREATEST(1, stop_loss_percent * leverage)),
+    bot_version = 9
+WHERE bot_version < 9;
+
 CREATE TABLE IF NOT EXISTS btc_usdc_robot_status (
   state_key VARCHAR(64) NOT NULL,
-  runtime_version SMALLINT UNSIGNED NOT NULL DEFAULT 2,
+  runtime_version SMALLINT UNSIGNED NOT NULL DEFAULT 4,
   mode VARCHAR(32) NOT NULL,
   execution_state VARCHAR(32) NOT NULL,
   status VARCHAR(32) NOT NULL,
@@ -57,6 +70,26 @@ CREATE TABLE IF NOT EXISTS btc_usdc_strategy_snapshot (
   signal_key VARCHAR(255) NOT NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (state_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS btc_usdc_divergence_snapshot (
+  state_key VARCHAR(64) NOT NULL,
+  candle_interval SMALLINT UNSIGNED NOT NULL,
+  divergence_signal VARCHAR(16) NOT NULL DEFAULT 'none',
+  rsi_period SMALLINT UNSIGNED NOT NULL DEFAULT 14,
+  current_rsi DECIMAL(12,8) NULL,
+  price_from DECIMAL(30,12) NULL,
+  price_to DECIMAL(30,12) NULL,
+  rsi_from DECIMAL(12,8) NULL,
+  rsi_to DECIMAL(12,8) NULL,
+  pivot_from_time BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  pivot_to_time BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  age_candles SMALLINT UNSIGNED NULL,
+  candle_time BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (state_key, candle_interval),
+  KEY idx_divergence_signal (divergence_signal, candle_interval)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS btc_usdc_binance_account (

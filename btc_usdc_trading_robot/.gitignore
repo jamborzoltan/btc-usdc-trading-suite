@@ -1,4 +1,6 @@
 robot.cfg
+execution_state.json
+execution_state.json.tmp
 logs/
 __pycache__/
 robot/__pycache__/

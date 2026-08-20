@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from robot.binance_usdm import BinanceUsdmClient
+from robot.binance_usdm import BinanceApiError, BinanceUsdmClient
 
 
 class StubBinanceClient(BinanceUsdmClient):
@@ -109,6 +109,79 @@ class BinanceAccountSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["wallet_balance"], 30.68581051)
         self.assertEqual(snapshot["available_balance"], 30.68581051)
         self.assertEqual(snapshot["positions"][0]["pnl_asset"], "BNFCR")
+
+
+class StubTradingClient(BinanceUsdmClient):
+    def __init__(self) -> None:
+        super().__init__("test-key", "test-secret")
+        self.posts = []
+        self.existing_order = None
+
+    def _public_get(self, path, params=None):  # type: ignore[override]
+        if path != "/fapi/v1/exchangeInfo":
+            raise AssertionError(path)
+        return {
+            "symbols": [
+                {
+                    "symbol": "BTCUSDC",
+                    "status": "TRADING",
+                    "filters": [
+                        {"filterType": "MARKET_LOT_SIZE", "minQty": "0.001", "maxQty": "100", "stepSize": "0.001"},
+                        {"filterType": "MIN_NOTIONAL", "notional": "5"},
+                    ],
+                }
+            ]
+        }
+
+    def _signed_get(self, path, params=None):  # type: ignore[override]
+        if path == "/fapi/v1/order":
+            if self.existing_order is not None:
+                return self.existing_order
+            raise BinanceApiError("Order does not exist", code=-2013)
+        if path == "/fapi/v1/income":
+            return [
+                {"incomeType": "REALIZED_PNL", "income": "-3.5"},
+                {"incomeType": "COMMISSION", "income": "-0.5"},
+                {"incomeType": "TRANSFER", "income": "-100"},
+            ]
+        raise AssertionError(path)
+
+    def _signed_post(self, path, params=None):  # type: ignore[override]
+        self.posts.append((path, params))
+        if path == "/fapi/v1/leverage":
+            return {"symbol": "BTCUSDC", "leverage": params["leverage"]}
+        if path == "/fapi/v1/order":
+            return {"status": "FILLED", "clientOrderId": params["newClientOrderId"]}
+        raise AssertionError(path)
+
+
+class BinanceTradingTests(unittest.TestCase):
+    def test_market_quantity_is_rounded_down_to_exchange_step(self) -> None:
+        client = StubTradingClient()
+        self.assertEqual(client.quantity_for_notional("BTCUSDC", 100, 64_000), "0.001")
+        self.assertEqual(client.close_quantity("BTCUSDC", 0.003, 50), "0.001")
+
+    def test_idempotent_market_order_uses_client_id_and_reduce_only(self) -> None:
+        client = StubTradingClient()
+        order = client.place_market_order(
+            "BTCUSDC", "SELL", "0.001", "btcusdc-test", reduce_only=True
+        )
+        self.assertEqual(order["status"], "FILLED")
+        _, params = client.posts[-1]
+        self.assertEqual(params["newClientOrderId"], "btcusdc-test")
+        self.assertEqual(params["reduceOnly"], "true")
+
+    def test_daily_loss_includes_realized_pnl_commission_but_not_transfer(self) -> None:
+        self.assertEqual(StubTradingClient().daily_loss_usdc("BTCUSDC"), 4.0)
+
+    def test_existing_client_order_is_not_posted_again(self) -> None:
+        client = StubTradingClient()
+        client.existing_order = {"status": "FILLED", "clientOrderId": "btcusdc-existing"}
+        order = client.place_market_order(
+            "BTCUSDC", "BUY", "0.001", "btcusdc-existing", reduce_only=False
+        )
+        self.assertEqual(order["status"], "FILLED")
+        self.assertEqual(client.posts, [])
 
 
 if __name__ == "__main__":

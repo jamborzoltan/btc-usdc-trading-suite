@@ -5,6 +5,7 @@
     const SHARED_STATE_REFRESH_MS = 2000;
     const MIN_WORKER_HEARTBEAT_TIMEOUT_MS = 15000;
     const CHART_WINDOW_KEY = "btc-usdc-robot-chart-window-v1";
+    const CHART_VISIBILITY_KEY = "btc-usdc-robot-chart-visible-v1";
     const BINANCE_PUBLIC_API = "https://fapi.binance.com/fapi/v1";
     const BROWSER_CANDLE_INTERVALS = { 15:"15m", 60:"1h", 1440:"1d" };
     let price = null;
@@ -16,6 +17,7 @@
     let strategySignals = {};
     let chartWindowState = null;
     let chartWindowInteraction = null;
+    let chartVisible = true;
     let browserMarketData = window.location.protocol === "file:";
     const STRATEGY_TYPES = [
       { id:"trend", label:"EMA" },
@@ -222,6 +224,28 @@
       }
     }
 
+    function readChartVisibility() {
+      try {
+        return localStorage.getItem(CHART_VISIBILITY_KEY) !== "false";
+      } catch {
+        return true;
+      }
+    }
+
+    function setChartVisibility(visible, shouldPersist = false) {
+      chartVisible = Boolean(visible);
+      const chartWindow = el("chartWindow");
+      const toggleButton = el("chartToggleButton");
+      chartWindow.hidden = !chartVisible;
+      document.body.classList.toggle("chart-hidden", !chartVisible);
+      toggleButton.setAttribute("aria-pressed", String(chartVisible));
+      el("chartToggleText").textContent = chartVisible ? "Chart elrejtése" : "Chart megjelenítése";
+      if (shouldPersist) {
+        try { localStorage.setItem(CHART_VISIBILITY_KEY, String(chartVisible)); } catch { /* A kapcsoló ettől még működik. */ }
+      }
+      if (chartVisible) requestAnimationFrame(drawCandles);
+    }
+
     function normalizeChartWindowState(state = {}) {
       const margin = 12;
       const bottomBarHeight = 100;
@@ -234,7 +258,7 @@
       const maximumLeft = Math.max(margin, window.innerWidth - width - margin);
       const maximumTop = Math.max(margin, window.innerHeight - bottomBarHeight - height - margin);
       const defaultLeft = maximumLeft;
-      const defaultTop = Math.min(86, maximumTop);
+      const defaultTop = Math.min(112, maximumTop);
       return {
         width,
         height,
@@ -252,7 +276,7 @@
       chartWindow.style.top = `${chartWindowState.top}px`;
       chartWindow.style.right = "auto";
       if (shouldPersist) localStorage.setItem(CHART_WINDOW_KEY, JSON.stringify(chartWindowState));
-      requestAnimationFrame(drawCandles);
+      if (chartVisible) requestAnimationFrame(drawCandles);
     }
 
     function finishChartWindowInteraction(event) {
@@ -263,7 +287,7 @@
     }
 
     function beginChartWindowInteraction(event, mode) {
-      if (event.button !== 0 || chartWindowInteraction) return;
+      if (event.button !== 0 || chartWindowInteraction || window.matchMedia("(max-width: 560px)").matches) return;
       const chartWindow = el("chartWindow");
       chartWindowInteraction = {
         mode,
@@ -301,7 +325,10 @@
       const chartWindow = el("chartWindow");
       const header = el("chartWindowHandle");
       const resizeHandle = el("chartWindowResize");
+      chartVisible = readChartVisibility();
       applyChartWindowState(readChartWindowState());
+      setChartVisibility(chartVisible);
+      el("chartToggleButton").addEventListener("click", () => setChartVisibility(!chartVisible, true));
       header.addEventListener("pointerdown", event => {
         if (event.target.closest("button")) return;
         beginChartWindowInteraction(event, "drag");
@@ -323,13 +350,13 @@
 
     function createBot() {
       return {
-        version:7,
+        version:9,
         enabled:false,
         strategyType:"trend",
         strategyInterval:60,
         leverage:1,
-        marginPercent:20,
-        stopLossPercent:2,
+        marginUsdc:20,
+        stopLossPercent:50,
         trailingStopPercent:1.5,
         partialTakeProfitPercent:0,
         partialClosePercent:50,
@@ -340,15 +367,22 @@
     }
 
     function ensureBot() {
-      const legacy = portfolio.bot && typeof portfolio.bot === "object" ? portfolio.bot : {};
+      const hasLegacyBot = Boolean(portfolio.bot && typeof portfolio.bot === "object");
+      const legacy = hasLegacyBot ? portfolio.bot : {};
+      const legacyVersion = hasLegacyBot ? Number(legacy.version) || 8 : 9;
       const worker = legacy.worker;
-      const normalized = { ...createBot(), ...legacy, version:7 };
+      const normalized = { ...createBot(), ...legacy, version:9 };
       normalized.enabled = Boolean(normalized.enabled);
       if (!["trend", "momentum", "mean_reversion", "trend_impulse"].includes(normalized.strategyType)) normalized.strategyType = "trend";
       normalized.strategyInterval = [15, 60].includes(Number(normalized.strategyInterval)) ? Number(normalized.strategyInterval) : 60;
-      normalized.leverage = clamp(Number(normalized.leverage) || 1, 1, 50);
-      normalized.marginPercent = clamp(Number(normalized.marginPercent) || 20, 1, 100);
-      normalized.stopLossPercent = clamp(Number(normalized.stopLossPercent) || 2, 0.25, 20);
+      normalized.leverage = clamp(Math.round(Number(normalized.leverage) || 1), 1, 125);
+      const legacyMarginUsdc = Number(legacy.marginUsdc ?? legacy.marginPercent);
+      normalized.marginUsdc = Math.round(clamp(Number.isFinite(legacyMarginUsdc) ? legacyMarginUsdc : 20, 0.01, 100000000) * 100) / 100;
+      delete normalized.marginPercent;
+      const stopLossPercent = Number(normalized.stopLossPercent);
+      normalized.stopLossPercent = legacyVersion < 9
+        ? clamp((Number.isFinite(stopLossPercent) ? stopLossPercent : 2) * normalized.leverage, 1, 100)
+        : clamp(Number.isFinite(stopLossPercent) ? stopLossPercent : 50, 1, 100);
       normalized.trailingStopPercent = clamp(Number(normalized.trailingStopPercent) || 1.5, 0.25, 20);
       normalized.partialTakeProfitPercent = clamp(Number(normalized.partialTakeProfitPercent) || 0, 0, 20);
       normalized.partialClosePercent = clamp(Number(normalized.partialClosePercent) || 50, 10, 90);
@@ -361,8 +395,64 @@
 
     function render() {
       const worker = portfolio.bot?.worker;
+      renderExecutionMode(worker);
       renderBinanceAccount(latestBinanceAccount, worker);
+      renderDivergences(worker?.divergences);
       renderBot();
+    }
+
+    function renderDivergences(divergences) {
+      const byInterval = new Map(
+        (Array.isArray(divergences) ? divergences : [])
+          .filter(item => item && typeof item === "object")
+          .map(item => [Number(item.interval), item])
+      );
+      renderDivergenceCard("1h", byInterval.get(60));
+      renderDivergenceCard("1d", byInterval.get(1440));
+    }
+
+    function renderDivergenceCard(key, divergence) {
+      const card = el(`divergence${key}Card`);
+      const signalElement = el(`divergence${key}Signal`);
+      const rsiElement = el(`divergence${key}Rsi`);
+      const detailElement = el(`divergence${key}Detail`);
+      const reasonElement = el(`divergence${key}Reason`);
+      if (!divergence) {
+        card.className = "divergence-card waiting";
+        signalElement.textContent = "Várakozás";
+        rsiElement.textContent = "RSI —";
+        detailElement.textContent = "A robot első számítására vár…";
+        reasonElement.textContent = "Nincs még indikátoradat.";
+        return;
+      }
+
+      const signal = ["bullish", "bearish"].includes(divergence.signal) ? divergence.signal : "none";
+      const currentRsi = Number(divergence.current_rsi);
+      card.className = `divergence-card ${signal}`;
+      signalElement.textContent = signal === "bullish" ? "Bullish" : signal === "bearish" ? "Bearish" : "Nincs jel";
+      rsiElement.textContent = Number.isFinite(currentRsi) ? `RSI(14) ${currentRsi.toFixed(2).replace(".", ",")}` : "RSI —";
+      if (signal === "none") {
+        detailElement.textContent = "Nincs friss megerősített pivot-divergencia.";
+      } else {
+        const priceFrom = Number(divergence.price_from);
+        const priceTo = Number(divergence.price_to);
+        const rsiFrom = Number(divergence.rsi_from);
+        const rsiTo = Number(divergence.rsi_to);
+        const age = Number(divergence.age_candles);
+        const ageLabel = Number.isFinite(age) ? ` · ${age} lezárt gyertyája` : "";
+        detailElement.textContent = `Ár ${money(priceFrom)} → ${money(priceTo)} · RSI ${rsiFrom.toFixed(2).replace(".", ",")} → ${rsiTo.toFixed(2).replace(".", ",")}${ageLabel}`;
+      }
+      reasonElement.textContent = divergence.reason || "A divergencia részlete nem érkezett meg.";
+    }
+
+    function renderExecutionMode(worker) {
+      const live = worker?.execution === "live";
+      const pill = el("executionPill");
+      const lock = el("executionLock");
+      pill.textContent = live ? "● Éles számlaadat · végrehajtás engedélyezve" : "● Éles számlaadat · végrehajtás zárolva";
+      pill.className = `pill ${live ? "live" : "locked"}`;
+      lock.textContent = live ? "Éles megbízás engedélyezve" : "Megbízásküldés zárolva";
+      lock.className = `execution-lock${live ? " live" : ""}`;
     }
 
     function renderBot() {
@@ -374,8 +464,8 @@
       renderStrategySignals();
       el("leverageRange").value = bot.leverage;
       el("leverageValue").textContent = `${bot.leverage}×`;
-      el("marginRange").value = bot.marginPercent;
-      el("marginValue").textContent = `${bot.marginPercent}%`;
+      const marginUsdcInput = el("marginUsdcInput");
+      if (document.activeElement !== marginUsdcInput) marginUsdcInput.value = bot.marginUsdc.toFixed(2);
       el("stopLossRange").value = bot.stopLossPercent;
       el("stopLossValue").textContent = `${bot.stopLossPercent.toFixed(2).replace(".", ",")}%`;
       el("trailingRange").value = bot.trailingStopPercent;
@@ -433,9 +523,12 @@
         el("positionValue").textContent = "Nincs pozíció";
         el("positionValue").className = "value";
       }
-      el("stopPriceValue").textContent = "Végrehajtás zárolva";
-      el("stopPriceValue").className = "value";
       const worker = bot.worker;
+      const liveExecution = worker?.execution === "live";
+      el("stopPriceValue").textContent = liveExecution
+        ? (position ? "Éles pozíciókezelés aktív" : "Éles mód · nincs pozíció")
+        : "Végrehajtás zárolva";
+      el("stopPriceValue").className = `value${liveExecution ? " positive" : ""}`;
       const workerStatus = el("workerStatus");
       if (worker && typeof worker === "object" && worker.heartbeat_at) {
         const signal = worker.strategy?.signal;
@@ -453,10 +546,13 @@
           workerStatus.textContent = `Külön robot nem elérhető · utolsó szívverés: ${heartbeatLabel}`;
           workerStatus.className = "worker-status degraded";
         } else if (worker.status === "monitoring") {
-          workerStatus.textContent = `Külön robot aktív · utolsó szívverés: ${heartbeatLabel} · ${signalLabel}`;
+          workerStatus.textContent = `Külön robot aktív · utolsó szívverés: ${heartbeatLabel} · ${signalLabel} · ${worker.message || "figyelés"}`;
+          workerStatus.className = "worker-status monitoring";
+        } else if (worker.status === "executing") {
+          workerStatus.textContent = `ÉLES VÉGREHAJTÁS · ${worker.message || "megbízás feldolgozása"}`;
           workerStatus.className = "worker-status monitoring";
         } else if (worker.status === "paused") {
-          workerStatus.textContent = `Külön robot szünetel · automatikus mód kikapcsolva · utolsó szívverés: ${heartbeatLabel}`;
+          workerStatus.textContent = `Külön robot szünetel · új belépés kikapcsolva · utolsó szívverés: ${heartbeatLabel}`;
           workerStatus.className = "worker-status paused";
         } else {
           workerStatus.textContent = `Külön robot figyelmeztetés · ${worker.message || "piaci adat hiba"}`;
@@ -551,7 +647,7 @@
       const timeout = Math.max(MIN_WORKER_HEARTBEAT_TIMEOUT_MS, Math.max(1, Number(worker?.poll_seconds) || 5) * 3000);
       el("binanceAccountStatus").textContent = heartbeatAge > timeout
         ? `FIGYELEM: az adat elavult · utolsó Binance-frissítés: ${fetchedLabel} · a Python robot nem ad friss szívverést.`
-        : `Binance ${balanceAsset} az irányadó · frissítve: ${fetchedLabel} · mód: csak olvasás · pozíciómód: ${account.position_mode === "hedge" ? "hedge" : "one-way"}.`;
+        : `Binance ${balanceAsset} az irányadó · frissítve: ${fetchedLabel} · mód: ${worker?.execution === "live" ? "ÉLES VÉGREHAJTÁS" : "csak olvasás"} · pozíciómód: ${account.position_mode === "hedge" ? "hedge" : "one-way"}.`;
     }
 
     function activateBrowserMarketData() {
@@ -801,8 +897,8 @@
       const line = style.getPropertyValue("--line").trim();
       const green = style.getPropertyValue("--green").trim();
       const red = style.getPropertyValue("--red").trim();
-      const ema20Color = "#67b7ff";
-      const ema50Color = "#f9c74f";
+      const ema20Color = "#f0b90b";
+      const ema50Color = "#8b5cf6";
       const left = 8, top = 16, right = 73, bottom = 31;
       const plotWidth = rectangle.width - left - right;
       const plotHeight = rectangle.height - top - bottom;
@@ -926,36 +1022,46 @@
       persist();
       renderBot();
       el("strategyStatus").textContent = portfolio.bot.enabled
-        ? "A stratégiafigyelés bekapcsolva; a Python robot jelzést számol, de megbízást még nem küldhet."
-        : "A stratégiafigyelés kikapcsolva; a Binance-egyenleg tovább frissül.";
+        ? "A stratégiafigyelés bekapcsolva. Order csak akkor megy ki, ha a mini PC éles konfigurációs retesze is nyitva van."
+        : "A stratégiafigyelés kikapcsolva; új belépés nincs, a robot saját nyitott pozíciójának védelmét tovább kezeli.";
     });
     el("leverageRange").addEventListener("input", event => {
       ensureBot();
       portfolio.bot.leverage = Number(event.target.value);
       persist();
       renderBot();
-      el("strategyStatus").textContent = `Tervezett tőkeáttét: ${portfolio.bot.leverage}×. Ez még nem módosítja a Binance-beállítást és nem küld megbízást.`;
+      const priceDistance = portfolio.bot.stopLossPercent / portfolio.bot.leverage;
+      el("strategyStatus").textContent = `Következő belépés tőkeáttétele: ${portfolio.bot.leverage}×. A −${portfolio.bot.stopLossPercent.toFixed(2).replace(".", ",")}% PnL-stop ehhez kb. ${priceDistance.toFixed(4).replace(".", ",")}% kedvezőtlen BTC-ármozgás.`;
     });
-    el("marginRange").addEventListener("input", event => {
+    el("marginUsdcInput").addEventListener("change", event => {
       ensureBot();
-      portfolio.bot.marginPercent = Number(event.target.value);
+      const amount = event.target.valueAsNumber;
+      if (!Number.isFinite(amount) || amount < 0.01 || amount > 100000000) {
+        event.target.setCustomValidity("Adj meg 0,01 és 100 000 000,00 közötti USDC összeget.");
+        event.target.reportValidity();
+        return;
+      }
+      event.target.setCustomValidity("");
+      portfolio.bot.marginUsdc = Math.round(amount * 100) / 100;
+      event.target.value = portfolio.bot.marginUsdc.toFixed(2);
       persist();
       renderBot();
-      el("strategyStatus").textContent = `Az elmentett tervezett USDC-felhasználás: ${portfolio.bot.marginPercent}%. Éles végrehajtás jelenleg nincs.`;
+      el("strategyStatus").textContent = `Következő belépés tervezett marginja: ${money(portfolio.bot.marginUsdc)}.`;
     });
     el("stopLossRange").addEventListener("input", event => {
       ensureBot();
       portfolio.bot.stopLossPercent = Number(event.target.value);
       persist();
       renderBot();
-      el("strategyStatus").textContent = `Tervezett stop-loss: ${portfolio.bot.stopLossPercent.toFixed(2).replace(".", ",")}%. A robot még nem helyez ki stop megbízást.`;
+      const priceDistance = portfolio.bot.stopLossPercent / portfolio.bot.leverage;
+      el("strategyStatus").textContent = `Stop-loss: −${portfolio.bot.stopLossPercent.toFixed(2).replace(".", ",")}% becsült pozíció-PnL. Ez ${portfolio.bot.leverage}× mellett kb. ${priceDistance.toFixed(4).replace(".", ",")}% kedvezőtlen BTC-ármozgás, díjak nélkül.`;
     });
     el("trailingRange").addEventListener("input", event => {
       ensureBot();
       portfolio.bot.trailingStopPercent = Number(event.target.value);
       persist();
       renderBot();
-      el("strategyStatus").textContent = `Tervezett trailing stop: ${portfolio.bot.trailingStopPercent.toFixed(2).replace(".", ",")}%. A robot még nem helyez ki stop megbízást.`;
+      el("strategyStatus").textContent = `Trailing stop: ${portfolio.bot.trailingStopPercent.toFixed(2).replace(".", ",")}% visszaesés a pozíció számára kedvező ármozgás csúcsától.`;
     });
     el("partialTakeProfitRange").addEventListener("input", event => {
       ensureBot();
@@ -964,7 +1070,7 @@
       persist();
       renderBot();
       el("strategyStatus").textContent = bot.partialTakeProfitPercent
-        ? `Tervezett részleges zárás: ${bot.partialTakeProfitPercent.toFixed(2).replace(".", ",")}% nyereségnél. Éles záró megbízás még nincs.`
+        ? `Részleges zárás: +${bot.partialTakeProfitPercent.toFixed(2).replace(".", ",")}% kedvező BTC-ármozgásnál.`
         : "A tervezett részleges zárás kikapcsolva.";
     });
     el("partialCloseRange").addEventListener("input", event => {
@@ -982,7 +1088,7 @@
       persist();
       renderBot();
       el("strategyStatus").textContent = portfolio.bot.profitFadePercent
-        ? `Tervezett profitvédelem: a csúcstól ${portfolio.bot.profitFadePercent.toFixed(2).replace(".", ",")}% visszaesés. Éles zárás még nincs.`
+        ? `Profitvédelem: a kedvező BTC-ármozgás csúcsától ${portfolio.bot.profitFadePercent.toFixed(2).replace(".", ",")}% visszaesés.`
         : "A tartás jelre működő profitvédelem kikapcsolva.";
     });
     el("profitFadeCloseRange").addEventListener("input", event => {

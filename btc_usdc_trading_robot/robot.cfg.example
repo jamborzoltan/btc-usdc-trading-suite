@@ -19,8 +19,11 @@ symbol = BTCUSDC
 recv_window_ms = 5000
 
 [live_trading]
-# A jelenlegi kód akkor sem tud ordert küldeni, ha ezt átírnád: a végrehajtás kód szinten zárolt.
+# Biztonságos első indításhoz maradjon false és a [robot] mode live_read_only.
+# Éles módhoz mindkettőt át kell állítani, a pontos acknowledgement mondattal együtt.
 enabled = false
 acknowledgement =
 max_order_notional_usdc = 0
 max_daily_loss_usdc = 0
+max_position_loss_percent = 50
+state_file = execution_state.json

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BTC/USDC robot</title>
-  <meta name="theme-color" content="#0b1020">
+  <meta name="theme-color" content="#0b0e11">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/btc-usdc-robot.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/btc-usdc-robot.svg">
@@ -62,13 +62,16 @@
   </div>
   <main>
     <header class="top">
-      <div><h1>BTC/USDC robot</h1><p class="subtitle">Binance USDⓈ-M számlaadat és folyamatos stratégiafigyelés.</p></div>
-      <span class="pill locked">● Éles számlaadat · végrehajtás zárolva</span>
+      <div><h1>BTC/USDC robot</h1><p class="subtitle">Binance USDⓈ-M számlaadat, stratégiafigyelés és reteszelt végrehajtás.</p></div>
+      <div class="top-actions">
+        <button class="chart-toggle" id="chartToggleButton" type="button" aria-controls="chartWindow" aria-pressed="true"><span class="chart-toggle-icon" aria-hidden="true">▥</span><span id="chartToggleText">Chart elrejtése</span></button>
+        <span class="pill locked" id="executionPill">● Éles számlaadat · végrehajtás zárolva</span>
+      </div>
     </header>
     <section class="card binance" id="binancePanel" aria-labelledby="binanceTitle">
       <div class="binance-head">
         <div><h2 id="binanceTitle">Binance USDⓈ-M · valós futures számla</h2><p class="hint">A mini PC hitelesített Binance-kapcsolatából érkezik. A böngésző nem kap API-kulcsot.</p></div>
-        <span class="execution-lock">Megbízásküldés zárolva</span>
+        <span class="execution-lock" id="executionLock">Megbízásküldés zárolva</span>
       </div>
       <div class="binance-grid">
         <div class="binance-metric"><div class="label">Tárcaegyenleg</div><div class="value" id="binanceWallet">—</div></div>
@@ -81,11 +84,11 @@
     </section>
     <section class="card strategy" aria-labelledby="strategyTitle">
       <div class="strategy-head">
-        <div><h2 id="strategyTitle">Választható futures robot</h2><p class="hint">A jelzések valós piaci adaton futnak. Az éles végrehajtás a következő, külön engedélyezendő fázis.</p></div>
+        <div><h2 id="strategyTitle">Választható futures robot</h2><p class="hint">A jelzések valós piaci adaton futnak. Éles orderhez a mini PC külön konfigurációs retesze és a Stratégiafigyelés kapcsoló is szükséges.</p></div>
         <div class="strategy-controls">
-          <div class="leverage-control"><label for="leverageRange">Tervezett tőkeáttét <output id="leverageValue">1×</output></label><input id="leverageRange" type="range" min="1" max="50" step="1" value="1"></div>
-          <div class="margin-control"><label for="marginRange">Tervezett USDC felhasználás <output id="marginValue">20%</output></label><input id="marginRange" type="range" min="1" max="100" step="1" value="20"></div>
-          <div class="stop-control"><label for="stopLossRange">Stop-loss távolsága <output id="stopLossValue">2,0%</output></label><input id="stopLossRange" type="range" min="0.25" max="20" step="0.25" value="2"></div>
+          <div class="leverage-control"><label for="leverageRange">Tervezett tőkeáttét <output id="leverageValue">1×</output></label><input id="leverageRange" type="range" min="1" max="125" step="1" value="1"></div>
+          <div class="margin-control"><label for="marginUsdcInput">Tervezett USDC felhasználás</label><div class="usdc-amount-input"><input id="marginUsdcInput" type="number" min="0.01" max="100000000" step="0.01" value="20.00" inputmode="decimal" aria-label="Tervezett USDC felhasználás"><span>USDC</span></div></div>
+          <div class="stop-control"><label for="stopLossRange">Stop-loss (pozíció PnL) <output id="stopLossValue">50%</output></label><input id="stopLossRange" type="range" min="1" max="100" step="1" value="50"></div>
           <div class="trailing-control"><label for="trailingRange">Trailing stop távolsága <output id="trailingValue">1,50%</output></label><input id="trailingRange" type="range" min="0.25" max="20" step="0.25" value="1.5"></div>
           <div class="partial-take-profit-control"><label for="partialTakeProfitRange">Részleges zárás nyereségnél <output id="partialTakeProfitValue">Kikapcsolva</output></label><input id="partialTakeProfitRange" type="range" min="0" max="20" step="0.25" value="0"></div>
           <div class="partial-close-control"><label for="partialCloseRange">Zárandó pozíciórész <output id="partialCloseValue">50%</output></label><input id="partialCloseRange" type="range" min="10" max="90" step="5" value="50"></div>
@@ -94,6 +97,25 @@
           <div class="strategy-toggle"><label for="confirmStopClose"><input id="confirmStopClose" type="checkbox" checked>Stop csak stratégia-gyertya záróáron</label></div>
         </div>
       </div>
+      <section class="divergence-section" aria-labelledby="divergenceTitle">
+        <div class="divergence-heading">
+          <div><h3 id="divergenceTitle">RSI(14) reguláris divergencia</h3><p class="hint">Megerősített 3–3 gyertyás swing-pontokból; információs jelzés, önmagában nem indít ordert.</p></div>
+        </div>
+        <div class="divergence-grid">
+          <article class="divergence-card waiting" id="divergence1hCard">
+            <div class="divergence-card-head"><strong>1 órás</strong><span class="divergence-signal" id="divergence1hSignal">Várakozás</span></div>
+            <div class="divergence-rsi" id="divergence1hRsi">RSI —</div>
+            <div class="divergence-detail" id="divergence1hDetail">A robot első számítására vár…</div>
+            <p id="divergence1hReason">Nincs még indikátoradat.</p>
+          </article>
+          <article class="divergence-card waiting" id="divergence1dCard">
+            <div class="divergence-card-head"><strong>1 napos</strong><span class="divergence-signal" id="divergence1dSignal">Várakozás</span></div>
+            <div class="divergence-rsi" id="divergence1dRsi">RSI —</div>
+            <div class="divergence-detail" id="divergence1dDetail">A robot első számítására vár…</div>
+            <p id="divergence1dReason">Nincs még indikátoradat.</p>
+          </article>
+        </div>
+      </section>
       <div class="strategy-grid">
         <div class="strategy-metric"><div class="label" id="indicatorLabel">Indikátor</div><div class="value" id="emaValue">—</div></div>
         <div class="strategy-metric position-metric"><div class="label">Futures pozíció</div><div class="value" id="positionValue">—</div><div class="position-prices"><span><small>Belépési ár</small><strong id="entryPriceValue">—</strong></span><span><small>Jelenlegi ár</small><strong id="currentPriceValue">—</strong></span><span><small>Becsült likvidár</small><strong id="liquidationPriceValue">—</strong></span></div></div>

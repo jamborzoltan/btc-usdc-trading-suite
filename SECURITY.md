@@ -22,8 +22,13 @@ a fájlból: vond vissza a szolgáltatónál, és készíts új kulcsot.
 - Az első, `live_read_only` tesztek alatt a kereskedési jogosultság maradjon
   kikapcsolva.
 - A kiutalási jogosultság mindig maradjon kikapcsolva.
-- Valódi megbízásküldést csak külön kódellenőrzés és veszteséglimit után
-  engedélyezz.
+- Éles módhoz használd a kötelező acknowledgement reteszt, pozitív order- és
+  napi veszteséglimitet, valamint a pozíció PnL%-ában megadott stopkorlátot.
+- Az `execution_state.json` a mini PC helyi biztonsági állapota; ne töltsd fel
+  webtárhelyre, ne szerkeszd kézzel és ne commitold.
+- A jelenlegi stopok szoftveresen felügyeltek. A mini PC vagy a hálózat leállása
+  alatt nem adható ki automatikus zárás, ezért az éles kitettséget ennek
+  megfelelően korlátozd.
 
 ## Probléma bejelentése
 

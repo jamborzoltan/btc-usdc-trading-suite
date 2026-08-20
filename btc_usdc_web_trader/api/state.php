@@ -109,6 +109,23 @@ function normalizeBotPortfolio(array $portfolio, bool $strict): array
         $strategyInterval = 60;
     }
 
+    $botVersion = botInteger($bot, 'version', 8, 1, 9, $strict);
+    $leverage = botInteger($bot, 'leverage', 1, 1, 125, $strict);
+
+    // Régi böngészőcache vagy legacy payload még marginPercent mezőt küldhet.
+    // A százalék összegegyenértéke számlaegyenleg nélkül nem számítható ki,
+    // ezért egyszeri kezdőértékként ugyanazt a numerikus értéket vesszük át.
+    if (!array_key_exists('marginUsdc', $bot) && array_key_exists('marginPercent', $bot)) {
+        $bot['marginUsdc'] = $bot['marginPercent'];
+    }
+
+    if ($botVersion < 9) {
+        $legacyStopPricePercent = botNumber($bot, 'stopLossPercent', 2, 0.25, 20, $strict);
+        $stopLossPercent = max(1, min(100, $legacyStopPricePercent * $leverage));
+    } else {
+        $stopLossPercent = botNumber($bot, 'stopLossPercent', 50, 1, 100, $strict);
+    }
+
     $enabled = $bot['enabled'] ?? false;
     $stopOnCandleClose = $bot['stopOnCandleClose'] ?? true;
     if (!is_bool($enabled)) {
@@ -125,13 +142,13 @@ function normalizeBotPortfolio(array $portfolio, bool $strict): array
     }
 
     return array('bot' => array(
-        'version' => botInteger($bot, 'version', 7, 1, 65535, $strict),
+        'version' => 9,
         'enabled' => $enabled,
         'strategyType' => $strategyType,
         'strategyInterval' => $strategyInterval,
-        'leverage' => botInteger($bot, 'leverage', 1, 1, 50, $strict),
-        'marginPercent' => botNumber($bot, 'marginPercent', 20, 1, 100, $strict),
-        'stopLossPercent' => botNumber($bot, 'stopLossPercent', 2, 0.25, 20, $strict),
+        'leverage' => $leverage,
+        'marginUsdc' => round(botNumber($bot, 'marginUsdc', 20, 0.01, 100000000, $strict), 2),
+        'stopLossPercent' => $stopLossPercent,
         'trailingStopPercent' => botNumber($bot, 'trailingStopPercent', 1.5, 0.25, 20, $strict),
         'partialTakeProfitPercent' => botNumber($bot, 'partialTakeProfitPercent', 0, 0, 20, $strict),
         'partialClosePercent' => botNumber($bot, 'partialClosePercent', 50, 10, 90, $strict),
@@ -145,7 +162,7 @@ function readStructuredState(mysqli $connection, string $stateKey): ?array
 {
     $statement = $connection->prepare(
         'SELECT bot_version, enabled, strategy_type, strategy_interval, leverage, '
-        . 'margin_percent, stop_loss_percent, trailing_stop_percent, '
+        . 'margin_usdc, stop_loss_percent, trailing_stop_percent, '
         . 'partial_take_profit_percent, partial_close_percent, profit_fade_percent, '
         . 'profit_fade_close_percent, stop_on_candle_close, revision '
         . 'FROM btc_usdc_bot_settings WHERE state_key = ? LIMIT 1'
@@ -158,7 +175,7 @@ function readStructuredState(mysqli $connection, string $stateKey): ?array
         $strategyType,
         $strategyInterval,
         $leverage,
-        $marginPercent,
+        $marginUsdc,
         $stopLossPercent,
         $trailingStopPercent,
         $partialTakeProfitPercent,
@@ -174,14 +191,13 @@ function readStructuredState(mysqli $connection, string $stateKey): ?array
         return null;
     }
 
-    return array(
-        'portfolio' => array('bot' => array(
+    $portfolio = normalizeBotPortfolio(array('bot' => array(
             'version' => (int) $botVersion,
             'enabled' => (bool) $enabled,
             'strategyType' => (string) $strategyType,
             'strategyInterval' => (int) $strategyInterval,
             'leverage' => (int) $leverage,
-            'marginPercent' => (float) $marginPercent,
+            'marginUsdc' => (float) $marginUsdc,
             'stopLossPercent' => (float) $stopLossPercent,
             'trailingStopPercent' => (float) $trailingStopPercent,
             'partialTakeProfitPercent' => (float) $partialTakeProfitPercent,
@@ -189,7 +205,10 @@ function readStructuredState(mysqli $connection, string $stateKey): ?array
             'profitFadePercent' => (float) $profitFadePercent,
             'profitFadeClosePercent' => (float) $profitFadeClosePercent,
             'stopOnCandleClose' => (bool) $stopOnCandleClose,
-        )),
+        )), false);
+
+    return array(
+        'portfolio' => $portfolio,
         'revision' => (int) $revision,
     );
 }
@@ -230,7 +249,7 @@ function insertStructuredState(
     $bot = $portfolio['bot'];
     $sql = 'INSERT ' . ($ignoreDuplicate ? 'IGNORE ' : '') . 'INTO btc_usdc_bot_settings '
         . '(state_key, bot_version, enabled, strategy_type, strategy_interval, leverage, '
-        . 'margin_percent, stop_loss_percent, trailing_stop_percent, partial_take_profit_percent, '
+        . 'margin_usdc, stop_loss_percent, trailing_stop_percent, partial_take_profit_percent, '
         . 'partial_close_percent, profit_fade_percent, profit_fade_close_percent, '
         . 'stop_on_candle_close, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
     $statement = $connection->prepare($sql);
@@ -239,7 +258,7 @@ function insertStructuredState(
     $strategyType = (string) $bot['strategyType'];
     $strategyInterval = (int) $bot['strategyInterval'];
     $leverage = (int) $bot['leverage'];
-    $marginPercent = (float) $bot['marginPercent'];
+    $marginUsdc = (float) $bot['marginUsdc'];
     $stopLossPercent = (float) $bot['stopLossPercent'];
     $trailingStopPercent = (float) $bot['trailingStopPercent'];
     $partialTakeProfitPercent = (float) $bot['partialTakeProfitPercent'];
@@ -255,7 +274,7 @@ function insertStructuredState(
         $strategyType,
         $strategyInterval,
         $leverage,
-        $marginPercent,
+        $marginUsdc,
         $stopLossPercent,
         $trailingStopPercent,
         $partialTakeProfitPercent,
@@ -328,7 +347,7 @@ function updateStructuredState(
     $bot = $portfolio['bot'];
     $statement = $connection->prepare(
         'UPDATE btc_usdc_bot_settings SET bot_version = ?, enabled = ?, strategy_type = ?, '
-        . 'strategy_interval = ?, leverage = ?, margin_percent = ?, stop_loss_percent = ?, '
+        . 'strategy_interval = ?, leverage = ?, margin_usdc = ?, stop_loss_percent = ?, '
         . 'trailing_stop_percent = ?, partial_take_profit_percent = ?, partial_close_percent = ?, '
         . 'profit_fade_percent = ?, profit_fade_close_percent = ?, stop_on_candle_close = ?, '
         . 'revision = revision + 1 WHERE state_key = ? AND revision = ?'
@@ -338,7 +357,7 @@ function updateStructuredState(
     $strategyType = (string) $bot['strategyType'];
     $strategyInterval = (int) $bot['strategyInterval'];
     $leverage = (int) $bot['leverage'];
-    $marginPercent = (float) $bot['marginPercent'];
+    $marginUsdc = (float) $bot['marginUsdc'];
     $stopLossPercent = (float) $bot['stopLossPercent'];
     $trailingStopPercent = (float) $bot['trailingStopPercent'];
     $partialTakeProfitPercent = (float) $bot['partialTakeProfitPercent'];
@@ -353,7 +372,7 @@ function updateStructuredState(
         $strategyType,
         $strategyInterval,
         $leverage,
-        $marginPercent,
+        $marginUsdc,
         $stopLossPercent,
         $trailingStopPercent,
         $partialTakeProfitPercent,

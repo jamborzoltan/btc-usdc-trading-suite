@@ -6,9 +6,9 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth-common.php';
 /*
  * A mini PC strukturált, rövid életű futási pillanatképe.
  *
- * A státusz, stratégia, Binance-számla és pozíciók külön táblákban vannak,
- * miközben a HTTP API továbbra is a robot és a webapp által ismert runtime
- * objektumot fogadja és adja vissza.
+ * A státusz, stratégia, divergenciák, Binance-számla és pozíciók külön
+ * táblákban vannak, miközben a HTTP API továbbra is a robot és a webapp által
+ * ismert runtime objektumot fogadja és adja vissza.
  */
 
 const MAX_RUNTIME_BYTES = 65536;
@@ -208,6 +208,69 @@ function writeStrategySnapshot(mysqli $connection, string $stateKey, mixed $valu
     $statement->close();
 }
 
+function writeDivergenceSnapshots(mysqli $connection, string $stateKey, mixed $value): void
+{
+    $delete = $connection->prepare('DELETE FROM btc_usdc_divergence_snapshot WHERE state_key = ?');
+    $delete->bind_param('s', $stateKey);
+    $delete->execute();
+    $delete->close();
+    if (!is_array($value)) {
+        return;
+    }
+
+    foreach (array_slice(array_values($value), 0, 2) as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $interval = runtimeInteger($item, 'interval');
+        if ($interval !== 60 && $interval !== 1440) {
+            continue;
+        }
+        $signal = runtimeString($item, 'signal', 'none', 16);
+        if (!in_array($signal, array('none', 'bullish', 'bearish'), true)) {
+            $signal = 'none';
+        }
+        $statement = $connection->prepare(
+            'INSERT INTO btc_usdc_divergence_snapshot '
+            . '(state_key, candle_interval, divergence_signal, rsi_period, current_rsi, '
+            . 'price_from, price_to, rsi_from, rsi_to, pivot_from_time, pivot_to_time, '
+            . 'age_candles, candle_time, reason) '
+            . 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $rsiPeriod = max(2, runtimeInteger($item, 'rsi_period', 14));
+        $currentRsi = runtimeNumber($item, 'current_rsi');
+        $priceFrom = runtimeNumber($item, 'price_from');
+        $priceTo = runtimeNumber($item, 'price_to');
+        $rsiFrom = runtimeNumber($item, 'rsi_from');
+        $rsiTo = runtimeNumber($item, 'rsi_to');
+        $pivotFromTime = max(0, runtimeInteger($item, 'pivot_from_time'));
+        $pivotToTime = max(0, runtimeInteger($item, 'pivot_to_time'));
+        $ageCandlesValue = runtimeInteger($item, 'age_candles', -1);
+        $ageCandles = $ageCandlesValue < 0 ? null : $ageCandlesValue;
+        $candleTime = max(0, runtimeInteger($item, 'candle_time'));
+        $reason = runtimeString($item, 'reason', '', 4096);
+        $statement->bind_param(
+            'sisidddddiiiis',
+            $stateKey,
+            $interval,
+            $signal,
+            $rsiPeriod,
+            $currentRsi,
+            $priceFrom,
+            $priceTo,
+            $rsiFrom,
+            $rsiTo,
+            $pivotFromTime,
+            $pivotToTime,
+            $ageCandles,
+            $candleTime,
+            $reason
+        );
+        $statement->execute();
+        $statement->close();
+    }
+}
+
 function deleteAccountSnapshot(mysqli $connection, string $stateKey): void
 {
     $statement = $connection->prepare('DELETE FROM btc_usdc_open_positions WHERE state_key = ?');
@@ -404,6 +467,54 @@ function readStrategySnapshot(mysqli $connection, string $stateKey): ?array
     return $strategy;
 }
 
+function readDivergenceSnapshots(mysqli $connection, string $stateKey): array
+{
+    $statement = $connection->prepare(
+        'SELECT candle_interval, divergence_signal, rsi_period, current_rsi, price_from, '
+        . 'price_to, rsi_from, rsi_to, pivot_from_time, pivot_to_time, age_candles, '
+        . 'candle_time, reason FROM btc_usdc_divergence_snapshot '
+        . 'WHERE state_key = ? ORDER BY candle_interval'
+    );
+    $statement->bind_param('s', $stateKey);
+    $statement->execute();
+    $statement->bind_result(
+        $interval,
+        $signal,
+        $rsiPeriod,
+        $currentRsi,
+        $priceFrom,
+        $priceTo,
+        $rsiFrom,
+        $rsiTo,
+        $pivotFromTime,
+        $pivotToTime,
+        $ageCandles,
+        $candleTime,
+        $reason
+    );
+    $results = array();
+    while ($statement->fetch()) {
+        $results[] = array(
+            'interval' => (int) $interval,
+            'timeframe' => (int) $interval === 60 ? '1 órás' : '1 napos',
+            'signal' => (string) $signal,
+            'rsi_period' => (int) $rsiPeriod,
+            'current_rsi' => $currentRsi === null ? null : (float) $currentRsi,
+            'price_from' => $priceFrom === null ? null : (float) $priceFrom,
+            'price_to' => $priceTo === null ? null : (float) $priceTo,
+            'rsi_from' => $rsiFrom === null ? null : (float) $rsiFrom,
+            'rsi_to' => $rsiTo === null ? null : (float) $rsiTo,
+            'pivot_from_time' => (int) $pivotFromTime,
+            'pivot_to_time' => (int) $pivotToTime,
+            'age_candles' => $ageCandles === null ? null : (int) $ageCandles,
+            'candle_time' => (int) $candleTime,
+            'reason' => (string) $reason,
+        );
+    }
+    $statement->close();
+    return $results;
+}
+
 function readPositions(mysqli $connection, string $stateKey): array
 {
     $statement = $connection->prepare(
@@ -556,6 +667,7 @@ function readStructuredRuntime(mysqli $connection, string $stateKey): ?array
             'price' => $price === null ? null : (float) $price,
             'change_24h' => $change24h === null ? null : (float) $change24h,
             'strategy' => readStrategySnapshot($connection, $stateKey),
+            'divergences' => readDivergenceSnapshots($connection, $stateKey),
             'account' => readAccountSnapshot($connection, $stateKey),
             'message' => (string) $message,
         ),
@@ -619,6 +731,7 @@ try {
     try {
         writeRobotStatus($connection, $stateKey, $runtime);
         writeStrategySnapshot($connection, $stateKey, $runtime['strategy'] ?? null);
+        writeDivergenceSnapshots($connection, $stateKey, $runtime['divergences'] ?? null);
         writeAccountSnapshot($connection, $stateKey, $runtime['account'] ?? null);
         $connection->commit();
     } catch (Throwable $exception) {

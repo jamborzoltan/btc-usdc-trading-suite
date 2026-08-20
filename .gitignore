@@ -3,6 +3,8 @@
 
 # Titkos helyi konfigurációk
 **/robot.cfg
+**/execution_state.json
+**/execution_state.json.tmp
 **/binance.cfg
 **/api/config.php
 *.env

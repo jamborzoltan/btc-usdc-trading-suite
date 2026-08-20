@@ -6,12 +6,18 @@ komponenssel:
 - `btc_usdc_trading_robot/` – a mini PC-n folyamatosan futó Python worker;
 - `btc_usdc_web_trader/` – mobilbarát PWA kezelőfelület PHP/MySQL adatkapuval.
 
-## Jelenlegi biztonsági állapot
+## Végrehajtási módok
 
-A Python worker `live_read_only` módban valódi Binance USDⓈ-M USDC-egyenleget
-(EEA Futures Credits módban BNFCR-egyenleget)
-és BTCUSDC pozíciókat olvas. Valódi megbízást még nem küldhet: az order-réteg
-kód szinten zárolt, a webapp pedig nem tartalmaz Binance API-kulcsot.
+A Python worker alapból `live_read_only` módban valódi Binance USDⓈ-M USDC-
+(EEA Futures Credits módban BNFCR-) egyenleget és BTCUSDC pozíciókat olvas.
+Külön helyi konfigurációval `live` mód is engedélyezhető; ilyenkor one-way
+BTCUSDC market ordereket küld, kötelező névérték-, napi veszteség- és becsült
+pozícióveszteség-limittel. A webapp továbbra sem tartalmaz Binance API-kulcsot.
+Az aktiválás részletei a `btc_usdc_trading_robot/README.md` fájlban vannak.
+
+A worker ettől független, információs RSI(14) reguláris bullish/bearish
+divergenciaindikátort is számol 1 órás és 1 napos lezárt BTCUSDC gyertyákon.
+Ez az indikátor nem része az automatikus belépési jelnek.
 
 ## Első indítás
 
