@@ -35,8 +35,9 @@ a mini PC-n maradhat.
    elküldi a meglévő `runtime_token` értéket a state API-nak is; a régi PHP API
    ezt az extra fejlécet még egyszerűen figyelmen kívül hagyja.
 2. Importáld az új `schema.sql` fájlt. Ez létrehozza a strukturált táblákat, de
-   nem törli és nem írja felül a régi payload-táblákat. Ezután egészítsd ki a
-   tárhelyes `config.php`-t.
+   nem törli és nem írja felül a régi payload-táblákat. A meglévő felhasználó
+   admin lesz, és megkapja a jelenlegi robot-token hashét. Ezután egészítsd ki
+   a tárhelyes `config.php`-t.
 3. Ezután töltsd fel a webes fájlokat. Így az új, védett state API megjelenésekor
    a robot már rendelkezik a szükséges gépi hitelesítéssel.
 4. Végezd el az egyszeri webes jelszóbeállítást, majd az iPhone-on regisztráld a
@@ -63,9 +64,9 @@ a valós Binance-runtime külön, olvasható oszlopokban és táblákban vannak.
    `auth_*` és session-beállításait. Az `auth_rp_id` pontosan a webapp domainje
    legyen, például `moldaxis.hu`, `https://` és elérési út nélkül. Az
    `auth_setup_token` egy új, legalább 32 karakteres véletlen titok legyen.
-5. Töltsd fel az `api/auth-common.php`, `auth.php`, `webauthn.php`, `state.php`
-   és `robot-runtime.php` fájlokat, majd külön a saját `config.php` fájlodat.
-   A `schema.sql` csak az importhoz kell.
+5. Töltsd fel az `api/auth-common.php`, `auth.php`, `webauthn.php`, `users.php`,
+   `state.php` és `robot-runtime.php` fájlokat, majd külön a saját `config.php`
+   fájlodat. A `schema.sql` csak az importhoz kell.
 6. Nyisd meg az oldalt HTTPS-en. Az első képernyőn add meg a configban lévő
    `auth_username` és `auth_setup_token` értéket, továbbá hozz létre legalább
    12 karakteres jelszót. Ez a beállítás csak egyszer hajtható végre.
@@ -82,14 +83,35 @@ letöltési mappába, és ne töltsd fel Gitbe. A kliens automatikusan megkeresi
 `api/state.php` végpontot. Ha az elérhető, onnantól minden módosítás MySQL-be
 mentődik; ha még nincs beállítva, a korábbi helyi böngészős tárolás marad aktív.
 
-A `config.php` fájlba a `robot_runtime_token` értéket is vedd fel ugyanazzal a
-legalább 24 karakteres titokkal, amely a mini PC `robot.cfg` fájljában szerepel.
-Ezt a titkot a mini PC a vezérlőállapot olvasásakor és a futási állapot írásakor
-küldi; a böngésző soha nem kapja meg.
+A `config.php` fájlban lévő `robot_runtime_token` az első, meglévő admin
+robotjának bootstrap/legacy tokenje marad. Ezt a mini PC a vezérlőállapot
+olvasásakor és a futási állapot írásakor küldi; a böngésző nem olvassa vissza.
+A további felhasználók saját tokenjét a „Robotok” panel készíti el.
 
 Az API minden SQL-művelete előkészített `mysqli` lekérdezést használ. A
 mentések állapotverziót is használnak: ha két eszköz egyszerre módosítana,
 az oldal a legfrissebb közös állapotot tölti vissza, nem írja felül csendben.
+
+### Több felhasználó és külön Python robot
+
+Az első bejelentkezésként létrehozott vagy már meglévő fiók az adminisztrátor.
+A felső „Robotok” gombbal új felhasználót és hozzá tartozó robot-hozzáférést
+hozhat létre. A megjelenő `runtime_token` csak egyszer látható; másold az adott
+felhasználó külön `robot.cfg` fájljába. Az adatbázis kizárólag a token hashét
+tárolja. Token cserekor a korábbi érték azonnal érvénytelenné válik.
+
+Felhasználónként külön Python folyamat szükséges, külön Binance API-kulccsal,
+`robot.cfg` fájllal és `execution_state.json` állapotfájllal. Például ugyanazon
+Windows gépen:
+
+```powershell
+py .\run_robot.py --config .\users\anna\robot.cfg
+py .\run_robot.py --config .\users\bela\robot.cfg
+```
+
+A robot-tokenből a PHP API szerveroldalon választja ki a megfelelő
+felhasználói `state_key` értéket. A kliens nem küldhet tetszőleges `state_key`
+paramétert, így a felhasználók beállításai és runtime-adatai elkülönülnek.
 
 ### Átállás a régi payload-táblákról
 
@@ -123,6 +145,11 @@ felhasználás pedig konkrét USDC-összegként, két tizedes pontossággal írh
 Az 1–100% közötti stop-loss közvetlenül a pozíció becsült, tőkeáttételes
 PnL%-át jelenti; a hozzá tartozó közelítő BTC-ármozgás `stop PnL% / leverage`.
 Ez az arány a díjakat, fundingot, csúszást és maintenance margint nem tartalmazza.
+Ugyanilyen tőkeáttételes PnL%-ban működik a részleges profitrealizálás és a
+tartás jel utáni, PnL-csúcstól mért visszaesés. A trailing stop továbbra is
+közvetlen BTC-ármozgás%-ot használ. A `schema.sql` a 10-es botverzióra váltáskor
+a két régi profitküszöböt egyszer megszorozza a beállított tőkeáttétellel, ezért
+a korábbi tényleges aktiválási pont megmarad.
 Read-only worker mellett ezek csak tervezési beállítások. A mini PC külön
 engedélyezett `live` workerével a következő belépés marginját és tőkeáttételét
 adják meg; a webapp önmagában soha nem küld Binance-megbízást.

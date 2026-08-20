@@ -18,7 +18,14 @@ a szorzata.
 A stop-loss közvetlenül a pozíció becsült, tőkeáttételes PnL%-ában állítható
 1–100% között. Például 50% PnL-stop 125× mellett megközelítőleg 0,4%-os
 kedvezőtlen BTC-ármozgásnak felel meg, a díjak, funding és csúszás előtt. A
-trailing és profitküszöbök továbbra is BTC-ármozgás%-ot jelentenek.
+„Részleges zárás” és a tartás jelhez tartozó, PnL-csúcstól mért visszaesés
+szintén közvetlen, tőkeáttételes pozíció-PnL%-ot jelent. Egyedül a trailing stop
+marad BTC-ármozgás%-ban megadva.
+
+A 10-es botverzióra frissítés a korábbi két profitküszöböt egyszer
+`régi ármozgás% × leverage` képlettel alakítja át, így a már beállított tényleges
+aktiválási pont nem változik meg. Az új PnL-küszöbök 0–2500% között, kézzel
+írhatók be; a 0 érték kikapcsolja az adott funkciót.
 
 A felület két külön kártyán mutatja az RSI(14) reguláris bullish/bearish
 divergenciát 1 órás és 1 napos lezárt gyertyákon. A megerősített pivot-jelzés
@@ -37,7 +44,8 @@ helyben megjegyzi. Mobilon a visszakapcsolt chart a kijelző szélességéhez ig
 - `app.js` – piaci adatok, stratégia, Binance-runtime megjelenítés és vezérlés
 - `manifest.webmanifest` és `sw.js` – telepíthető PWA és offline alkalmazáshéj
 - `icons/btc-usdc-robot.svg` – alkalmazásikon
-- `api/auth.php` és `api/webauthn.php` – jelszavas és passkey-hitelesítés
+- `api/auth.php` és `api/webauthn.php` – többfelhasználós jelszavas és passkey-hitelesítés
+- `api/users.php` – adminisztrátori felhasználólétrehozás és robot-token csere
 - `api/state.php` – strukturált botbeállítás-API, revision-alapú ütközésvédelemmel
 - `api/robot-runtime.php` – strukturált státusz-, stratégia-, divergencia-, számla- és pozíció-API
 - `api/schema.sql` – az alkalmazás MySQL-tábláinak létrehozása
@@ -64,6 +72,21 @@ közvetlenül olvashatók és szűrhetők az értékek.
 Meglévő telepítés frissítésekor a `schema.sql` idempotens módon hozzáadja a
 `margin_usdc` oszlopot. A korábbi `margin_percent` oszlop megmaradhat legacy
 adatként, de az új API már nem olvassa és nem írja.
+
+## Több felhasználó, külön robotok
+
+Az első, már létező felhasználó automatikusan adminisztrátor lesz, és megtartja
+a jelenlegi `state_key` alatti beállításait, runtime-adatait, passkey-jeit és a
+`config.php`-ban megadott robot-tokenét. Az admin a bejelentkezés utáni
+„Robotok” panelen hozhat létre további felhasználókat. Minden új fiók külön
+véletlen `state_key` értéket és külön robot-tokent kap, ezért a beállításai,
+Binance-számlaképe és robot-szívverése nem keveredhet más fiókéval.
+
+A nyers robot-token nem kerül MySQL-be; ott kizárólag a SHA-256 hash marad. A
+felület a tokent csak létrehozáskor vagy cserekor mutatja meg. Felhasználónként
+külön Python folyamatot és külön `robot.cfg` fájlt kell indítani; abba a panelen
+kapott `runtime_token` tartozik. Egy robot tokenje a state API olvasásakor és a
+runtime API írásakor is ugyanazt a felhasználói teret választja ki.
 
 Frissítéskor a régi `btc_usdc_robot_state` payloadját a state API egyszer,
 automatikusan átemeli az új beállítástáblába. A régi runtime helyett az első új

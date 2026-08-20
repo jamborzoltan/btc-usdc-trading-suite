@@ -37,7 +37,7 @@
         </label>
         <form class="auth-form auth-setup" id="setupForm" hidden>
           <h2>Első biztonsági beállítás</h2>
-          <p>Hozd létre az egyetlen webapp-felhasználót a config.php-ban megadott egyszeri beállítási tokennel.</p>
+          <p>Hozd létre az első rendszergazdát a config.php-ban megadott egyszeri beállítási tokennel.</p>
           <label for="setupUsername">Felhasználónév</label>
           <input id="setupUsername" name="username" type="text" autocomplete="username" maxlength="64" required>
           <label for="setupPassword">Új jelszó (legalább 12 karakter)</label>
@@ -54,18 +54,58 @@
     <span id="authSessionLabel">Bejelentkezve</span>
     <button id="autoPasskeyButton" type="button" hidden>Auto Face ID: ki</button>
     <button id="registerPasskeyButton" type="button" hidden>Face ID beállítása</button>
+    <button id="userManagementButton" type="button" hidden>Robotok</button>
     <button id="logoutButton" type="button">Kilépés</button>
   </div>
-  <div class="mysql-connection-indicator checking" id="mysqlConnectionIndicator" role="status" aria-live="polite">
-    <span class="mysql-connection-dot" aria-hidden="true"></span>
-    <span id="mysqlConnectionText">MySQL kapcsolat ellenőrzése…</span>
-  </div>
+  <section class="user-management" id="userManagementPanel" role="dialog" aria-modal="true" aria-labelledby="userManagementTitle" hidden>
+    <div class="user-management-card">
+      <header class="user-management-head">
+        <div>
+          <h2 id="userManagementTitle">Felhasználók és robotok</h2>
+          <p>Minden felhasználó saját beállításokat, robot-státuszt és robot-tokent kap.</p>
+        </div>
+        <button id="closeUserManagementButton" type="button" aria-label="Felhasználókezelés bezárása">Bezárás</button>
+      </header>
+      <section class="robot-token-result" id="robotTokenResult" aria-live="polite" hidden>
+        <strong id="robotTokenTitle">Robot-konfiguráció</strong>
+        <p>A titkos token csak most látható. Másold át ezt a három értéket az adott robot <code>robot.cfg</code> fájljának <code>[web_state]</code> blokkjába; a meglévő Basic Auth sorokat tartsd meg.</p>
+        <pre id="robotTokenConfig"></pre>
+        <button id="copyRobotTokenButton" type="button">Konfiguráció másolása</button>
+      </section>
+      <form class="managed-user-form" id="createUserForm" hidden>
+        <h3>Új felhasználó és külön robot</h3>
+        <div class="managed-user-field">
+          <label for="managedUsername">Felhasználónév</label>
+          <input id="managedUsername" name="username" type="text" autocomplete="off" minlength="3" maxlength="64" pattern="[A-Za-z0-9_.-]{3,64}" required>
+        </div>
+        <div class="managed-user-field">
+          <label for="managedPassword">Kezdeti jelszó (legalább 12 karakter)</label>
+          <input id="managedPassword" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+        </div>
+        <button class="auth-primary" type="submit">Felhasználó létrehozása</button>
+      </form>
+      <section class="managed-user-list" aria-labelledby="managedUserListTitle">
+        <h3 id="managedUserListTitle">Elkülönített robot-hozzáférések</h3>
+        <div class="managed-user-table-wrap">
+          <table>
+            <thead><tr><th>Felhasználó</th><th>Szerepkör</th><th>Robot</th><th>Művelet</th></tr></thead>
+            <tbody id="managedUsers"><tr><td colspan="4" class="empty">Betöltés…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+      <p class="user-management-message" id="userManagementMessage" role="status"></p>
+    </div>
+  </section>
   <main>
     <header class="top">
       <div><h1>BTC/USDC robot</h1><p class="subtitle">Binance USDⓈ-M számlaadat, stratégiafigyelés és reteszelt végrehajtás.</p></div>
       <div class="top-actions">
         <button class="chart-toggle" id="chartToggleButton" type="button" aria-controls="chartWindow" aria-pressed="true"><span class="chart-toggle-icon" aria-hidden="true">▥</span><span id="chartToggleText">Chart elrejtése</span></button>
-        <span class="pill locked" id="executionPill">● Éles számlaadat · végrehajtás zárolva</span>
+        <span class="mysql-connection-indicator checking" id="mysqlConnectionIndicator" role="status" aria-live="polite" aria-label="MySQL kapcsolat ellenőrzése…" title="MySQL kapcsolat ellenőrzése…">
+          <span class="mysql-connection-dot" aria-hidden="true"></span>
+          <span id="mysqlConnectionText">MySQL kapcsolat ellenőrzése…</span>
+        </span>
+        <span class="pill locked" id="executionPill" aria-label="Éles számlaadat · végrehajtás zárolva" title="Végrehajtás zárolva">● Éles számlaadat</span>
       </div>
     </header>
     <section class="card binance" id="binancePanel" aria-labelledby="binanceTitle">
@@ -90,9 +130,9 @@
           <div class="margin-control"><label for="marginUsdcInput">Tervezett USDC felhasználás</label><div class="usdc-amount-input"><input id="marginUsdcInput" type="number" min="0.01" max="100000000" step="0.01" value="20.00" inputmode="decimal" aria-label="Tervezett USDC felhasználás"><span>USDC</span></div></div>
           <div class="stop-control"><label for="stopLossRange">Stop-loss (pozíció PnL) <output id="stopLossValue">50%</output></label><input id="stopLossRange" type="range" min="1" max="100" step="1" value="50"></div>
           <div class="trailing-control"><label for="trailingRange">Trailing stop távolsága <output id="trailingValue">1,50%</output></label><input id="trailingRange" type="range" min="0.25" max="20" step="0.25" value="1.5"></div>
-          <div class="partial-take-profit-control"><label for="partialTakeProfitRange">Részleges zárás nyereségnél <output id="partialTakeProfitValue">Kikapcsolva</output></label><input id="partialTakeProfitRange" type="range" min="0" max="20" step="0.25" value="0"></div>
+          <div class="partial-take-profit-control"><label for="partialTakeProfitRange">Részleges zárás (pozíció PnL) <output id="partialTakeProfitValue">Kikapcsolva</output></label><div class="pnl-percent-input"><input id="partialTakeProfitRange" type="number" min="0" max="2500" step="0.25" value="0" inputmode="decimal" aria-label="Részleges zárás pozíció PnL százaléknál"><span>% PnL</span></div></div>
           <div class="partial-close-control"><label for="partialCloseRange">Zárandó pozíciórész <output id="partialCloseValue">50%</output></label><input id="partialCloseRange" type="range" min="10" max="90" step="5" value="50"></div>
-          <div class="profit-fade-control"><label for="profitFadeRange">Tartás jel · csúcstól visszaesés <output id="profitFadeValue">1,00%</output></label><input id="profitFadeRange" type="range" min="0" max="10" step="0.25" value="1"></div>
+          <div class="profit-fade-control"><label for="profitFadeRange">Tartás jel · PnL-csúcstól visszaesés <output id="profitFadeValue">1,00%</output></label><div class="pnl-percent-input"><input id="profitFadeRange" type="number" min="0" max="2500" step="0.25" value="1" inputmode="decimal" aria-label="Pozíció PnL csúcstól mért visszaesése"><span>% PnL</span></div></div>
           <div class="profit-fade-close-control"><label for="profitFadeCloseRange">Ilyenkor zárandó maradék <output id="profitFadeCloseValue">100%</output></label><input id="profitFadeCloseRange" type="range" min="10" max="100" step="5" value="100"></div>
           <div class="strategy-toggle"><label for="confirmStopClose"><input id="confirmStopClose" type="checkbox" checked>Stop csak stratégia-gyertya záróáron</label></div>
         </div>
@@ -144,11 +184,9 @@
     <div class="chart-window-resize" id="chartWindowResize" aria-hidden="true"></div>
   </section>
   <section class="strategy-action-bar" aria-label="Robotvezérlők">
-    <label class="bottom-auto-toggle" for="strategyEnabled">
-      <input id="strategyEnabled" type="checkbox">
+    <label class="bottom-auto-toggle" for="strategyEnabled" title="Stratégiafigyelés">
+      <input id="strategyEnabled" type="checkbox" aria-label="Stratégiafigyelés">
       <span class="bottom-auto-toggle-track" aria-hidden="true"><span></span></span>
-      <span class="bottom-auto-toggle-label">Stratégiafigyelés</span>
-      <span class="bottom-auto-toggle-state" aria-hidden="true"></span>
     </label>
     <div class="bottom-strategy-select">
       <label for="strategyType">Stratégia</label>
@@ -163,7 +201,6 @@
     <div class="strategy-bottom-item" aria-live="polite"><small>BTC / USDC · <span id="change">—</span></small><strong class="value" id="price">—</strong></div>
     <div class="strategy-bottom-item strategy-signals-item"><small>Stratégiajelzések · zöld: aktív</small><div class="strategy-signals" id="allStrategySignals" aria-live="polite"></div></div>
     <div class="strategy-bottom-item"><small id="trendLabel">Piaci kontextus</small><strong class="value" id="trendValue">—</strong></div>
-    <div class="strategy-bottom-item"><small id="botValueLabel">Binance margin</small><strong class="value" id="botValue">—</strong></div>
   </footer>
   <script src="auth.js"></script>
   <script src="app.js"></script>

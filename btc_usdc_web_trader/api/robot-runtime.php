@@ -699,20 +699,22 @@ function readLegacyRuntime(mysqli $connection, string $stateKey): ?array
 }
 
 $config = loadAppConfig();
-$stateKey = validatedStateKey($config);
 $requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 if ($requestMethod !== 'GET' && $requestMethod !== 'POST') {
     header('Allow: GET, POST');
     respondJson(405, array('error' => 'Csak GET és POST kérés engedélyezett.'));
 }
-if ($requestMethod === 'GET') {
-    requireUserSession($config);
-} else {
-    requireRobotToken($config);
-}
 
 try {
     $connection = openDatabase($config);
+    if ($requestMethod === 'GET') {
+        $session = requireUserSession($config);
+        $stateKey = $session['state_key'];
+    } else {
+        $tenant = requireRobotTenant($connection, $config);
+        $stateKey = $tenant['state_key'];
+    }
+
     if ($requestMethod === 'GET') {
         $connection->begin_transaction();
         try {

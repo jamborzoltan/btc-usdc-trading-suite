@@ -61,6 +61,23 @@ class ConfigurationTests(unittest.TestCase):
         self.assertTrue(settings.live_trading_enabled)
         self.assertEqual(settings.max_position_loss_percent, 50)
 
+    def test_each_config_directory_gets_a_separate_execution_state(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as first_directory,
+            tempfile.TemporaryDirectory() as second_directory,
+        ):
+            first_config = Path(first_directory) / "robot.cfg"
+            second_config = Path(second_directory) / "robot.cfg"
+            first_config.write_text(VALID_CONFIG, encoding="utf-8")
+            second_config.write_text(VALID_CONFIG, encoding="utf-8")
+
+            first_settings = load_settings(first_config)
+            second_settings = load_settings(second_config)
+
+            self.assertEqual(first_settings.execution_state_path.parent, Path(first_directory))
+            self.assertEqual(second_settings.execution_state_path.parent, Path(second_directory))
+            self.assertNotEqual(first_settings.execution_state_path, second_settings.execution_state_path)
+
 
 class ExecutionGateTests(unittest.TestCase):
     def test_disabled_policy_always_rejects_orders(self) -> None:

@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth-common.php';
 
 /*
- * Strukturált, egyfelhasználós robotbeállítás-API.
+ * Strukturált, felhasználónként elkülönített robotbeállítás-API.
  *
  * A kliensszerződés továbbra is {portfolio, revision}, de a stabil botmezők
  * külön MySQL-oszlopokba kerülnek. A régi btc_usdc_robot_state.payload tábla
@@ -109,7 +109,7 @@ function normalizeBotPortfolio(array $portfolio, bool $strict): array
         $strategyInterval = 60;
     }
 
-    $botVersion = botInteger($bot, 'version', 8, 1, 9, $strict);
+    $botVersion = botInteger($bot, 'version', 8, 1, 10, $strict);
     $leverage = botInteger($bot, 'leverage', 1, 1, 125, $strict);
 
     // Régi böngészőcache vagy legacy payload még marginPercent mezőt küldhet.
@@ -124,6 +124,30 @@ function normalizeBotPortfolio(array $portfolio, bool $strict): array
         $stopLossPercent = max(1, min(100, $legacyStopPricePercent * $leverage));
     } else {
         $stopLossPercent = botNumber($bot, 'stopLossPercent', 50, 1, 100, $strict);
+    }
+
+    if ($botVersion < 10) {
+        $legacyPartialTakeProfit = botNumber(
+            $bot,
+            'partialTakeProfitPercent',
+            0,
+            0,
+            20,
+            $strict
+        );
+        $legacyProfitFade = botNumber($bot, 'profitFadePercent', 1, 0, 10, $strict);
+        $partialTakeProfitPercent = min(2500, $legacyPartialTakeProfit * $leverage);
+        $profitFadePercent = min(2500, $legacyProfitFade * $leverage);
+    } else {
+        $partialTakeProfitPercent = botNumber(
+            $bot,
+            'partialTakeProfitPercent',
+            0,
+            0,
+            2500,
+            $strict
+        );
+        $profitFadePercent = botNumber($bot, 'profitFadePercent', 1, 0, 2500, $strict);
     }
 
     $enabled = $bot['enabled'] ?? false;
@@ -142,7 +166,7 @@ function normalizeBotPortfolio(array $portfolio, bool $strict): array
     }
 
     return array('bot' => array(
-        'version' => 9,
+        'version' => 10,
         'enabled' => $enabled,
         'strategyType' => $strategyType,
         'strategyInterval' => $strategyInterval,
@@ -150,9 +174,9 @@ function normalizeBotPortfolio(array $portfolio, bool $strict): array
         'marginUsdc' => round(botNumber($bot, 'marginUsdc', 20, 0.01, 100000000, $strict), 2),
         'stopLossPercent' => $stopLossPercent,
         'trailingStopPercent' => botNumber($bot, 'trailingStopPercent', 1.5, 0.25, 20, $strict),
-        'partialTakeProfitPercent' => botNumber($bot, 'partialTakeProfitPercent', 0, 0, 20, $strict),
+        'partialTakeProfitPercent' => $partialTakeProfitPercent,
         'partialClosePercent' => botNumber($bot, 'partialClosePercent', 50, 10, 90, $strict),
-        'profitFadePercent' => botNumber($bot, 'profitFadePercent', 1, 0, 10, $strict),
+        'profitFadePercent' => $profitFadePercent,
         'profitFadeClosePercent' => botNumber($bot, 'profitFadeClosePercent', 100, 10, 100, $strict),
         'stopOnCandleClose' => $stopOnCandleClose,
     ));
@@ -390,22 +414,22 @@ function updateStructuredState(
 }
 
 $config = loadAppConfig();
-$stateKey = validatedStateKey($config);
 $requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 if ($requestMethod !== 'GET' && $requestMethod !== 'POST') {
     header('Allow: GET, POST');
     respondJson(405, array('error' => 'Csak GET és POST kérés engedélyezett.'));
 }
-if ($requestMethod === 'GET') {
-    if (!hasValidRobotToken($config)) {
-        requireUserSession($config);
-    }
-} else {
-    requireUserSession($config, true);
-}
 
 try {
     $connection = openDatabase($config);
+    if ($requestMethod === 'GET' && requestHasRobotToken()) {
+        $tenant = requireRobotTenant($connection, $config);
+        $stateKey = $tenant['state_key'];
+    } else {
+        $session = requireUserSession($config, $requestMethod === 'POST');
+        $stateKey = $session['state_key'];
+    }
+
     if ($requestMethod === 'GET') {
         $state = readCurrentState($connection, $stateKey);
         respondJson(200, array(

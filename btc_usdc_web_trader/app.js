@@ -26,15 +26,30 @@
       { id:"trend_impulse", label:"Trend+mom." },
     ];
     const sharedState = { enabled:false, revision:0, saveTimer:null, saving:false, pendingSave:false, syncing:false };
+    function accountStorageKey() {
+      const account = window.BtcAuth?.currentAccount?.();
+      const username = String(account?.username || "").trim().toLowerCase();
+      return username ? `${KEY}:${encodeURIComponent(username)}` : null;
+    }
     function readLocalPortfolio() {
+      const storageKey = accountStorageKey();
+      if (!storageKey) return {};
       try {
-        const stored = JSON.parse(localStorage.getItem(KEY));
+        const account = window.BtcAuth?.currentAccount?.();
+        let raw = localStorage.getItem(storageKey);
+        // A kiadás előtti, egyfelhasználós lokális mentést csak az első admin
+        // örökölheti; további felhasználó soha nem kapja meg ezt a tartalmat.
+        if (raw === null && account?.isLegacyAccount) {
+          raw = localStorage.getItem(KEY);
+          if (raw !== null) localStorage.setItem(storageKey, raw);
+        }
+        const stored = JSON.parse(raw);
         return stored && typeof stored === "object" ? stored : {};
       } catch {
         return {};
       }
     }
-    let portfolio = readLocalPortfolio();
+    let portfolio = {};
     const el = id => document.getElementById(id);
     // Az USDC stabilcoin, nem ISO 4217 pénznemkód; ezért a feliratot kézzel tesszük hozzá.
     const money = value => `${new Intl.NumberFormat("hu-HU", { minimumFractionDigits:2, maximumFractionDigits:2 }).format(value)} USDC`;
@@ -45,7 +60,9 @@
     const num = value => new Intl.NumberFormat("hu-HU", { maximumFractionDigits: 4 }).format(value);
     const safeHtml = value => String(value).replace(/[&<>"']/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" })[character]);
     function persistLocal() {
-      try { localStorage.setItem(KEY, JSON.stringify(portfolio)); } catch { /* A közös mentés ettől még működhet. */ }
+      const storageKey = accountStorageKey();
+      if (!storageKey) return;
+      try { localStorage.setItem(storageKey, JSON.stringify(portfolio)); } catch { /* A közös mentés ettől még működhet. */ }
     }
 
     function queueSharedSave() {
@@ -74,7 +91,10 @@
         checking:"MySQL kapcsolat ellenőrzése…",
       };
       indicator.className = `mysql-connection-indicator ${state}`;
-      text.textContent = states[state] || states.inactive;
+      const stateText = states[state] || states.inactive;
+      text.textContent = stateText;
+      indicator.setAttribute("aria-label", stateText);
+      indicator.title = stateText;
     }
 
     async function readSharedResponse(response) {
@@ -350,7 +370,7 @@
 
     function createBot() {
       return {
-        version:9,
+        version:10,
         enabled:false,
         strategyType:"trend",
         strategyInterval:60,
@@ -369,9 +389,9 @@
     function ensureBot() {
       const hasLegacyBot = Boolean(portfolio.bot && typeof portfolio.bot === "object");
       const legacy = hasLegacyBot ? portfolio.bot : {};
-      const legacyVersion = hasLegacyBot ? Number(legacy.version) || 8 : 9;
+      const legacyVersion = hasLegacyBot ? Number(legacy.version) || 8 : 10;
       const worker = legacy.worker;
-      const normalized = { ...createBot(), ...legacy, version:9 };
+      const normalized = { ...createBot(), ...legacy, version:10 };
       normalized.enabled = Boolean(normalized.enabled);
       if (!["trend", "momentum", "mean_reversion", "trend_impulse"].includes(normalized.strategyType)) normalized.strategyType = "trend";
       normalized.strategyInterval = [15, 60].includes(Number(normalized.strategyInterval)) ? Number(normalized.strategyInterval) : 60;
@@ -384,9 +404,15 @@
         ? clamp((Number.isFinite(stopLossPercent) ? stopLossPercent : 2) * normalized.leverage, 1, 100)
         : clamp(Number.isFinite(stopLossPercent) ? stopLossPercent : 50, 1, 100);
       normalized.trailingStopPercent = clamp(Number(normalized.trailingStopPercent) || 1.5, 0.25, 20);
-      normalized.partialTakeProfitPercent = clamp(Number(normalized.partialTakeProfitPercent) || 0, 0, 20);
+      const partialTakeProfitPercent = Number(normalized.partialTakeProfitPercent) || 0;
+      normalized.partialTakeProfitPercent = legacyVersion < 10
+        ? clamp(partialTakeProfitPercent * normalized.leverage, 0, 2500)
+        : clamp(partialTakeProfitPercent, 0, 2500);
       normalized.partialClosePercent = clamp(Number(normalized.partialClosePercent) || 50, 10, 90);
-      normalized.profitFadePercent = clamp(Number(normalized.profitFadePercent) || 0, 0, 10);
+      const profitFadePercent = Number(normalized.profitFadePercent) || 0;
+      normalized.profitFadePercent = legacyVersion < 10
+        ? clamp(profitFadePercent * normalized.leverage, 0, 2500)
+        : clamp(profitFadePercent, 0, 2500);
       normalized.profitFadeClosePercent = clamp(Number(normalized.profitFadeClosePercent) || 100, 10, 100);
       normalized.stopOnCandleClose = Boolean(normalized.stopOnCandleClose);
       if (worker) normalized.worker = worker;
@@ -449,8 +475,11 @@
       const live = worker?.execution === "live";
       const pill = el("executionPill");
       const lock = el("executionLock");
-      pill.textContent = live ? "● Éles számlaadat · végrehajtás engedélyezve" : "● Éles számlaadat · végrehajtás zárolva";
+      const executionStatus = live ? "Végrehajtás engedélyezve" : "Végrehajtás zárolva";
+      pill.textContent = "● Éles számlaadat";
       pill.className = `pill ${live ? "live" : "locked"}`;
+      pill.setAttribute("aria-label", `Éles számlaadat · ${executionStatus.toLocaleLowerCase("hu-HU")}`);
+      pill.title = executionStatus;
       lock.textContent = live ? "Éles megbízás engedélyezve" : "Megbízásküldés zárolva";
       lock.className = `execution-lock${live ? " live" : ""}`;
     }
@@ -470,14 +499,16 @@
       el("stopLossValue").textContent = `${bot.stopLossPercent.toFixed(2).replace(".", ",")}%`;
       el("trailingRange").value = bot.trailingStopPercent;
       el("trailingValue").textContent = `${bot.trailingStopPercent.toFixed(2).replace(".", ",")}%`;
-      el("partialTakeProfitRange").value = bot.partialTakeProfitPercent;
+      const partialTakeProfitInput = el("partialTakeProfitRange");
+      if (document.activeElement !== partialTakeProfitInput) partialTakeProfitInput.value = bot.partialTakeProfitPercent;
       el("partialTakeProfitValue").textContent = bot.partialTakeProfitPercent
         ? `+${bot.partialTakeProfitPercent.toFixed(2).replace(".", ",")}%`
         : "Kikapcsolva";
       el("partialCloseRange").value = bot.partialClosePercent;
       el("partialCloseValue").textContent = `${bot.partialClosePercent}%`;
       el("partialCloseRange").disabled = !bot.partialTakeProfitPercent;
-      el("profitFadeRange").value = bot.profitFadePercent;
+      const profitFadeInput = el("profitFadeRange");
+      if (document.activeElement !== profitFadeInput) profitFadeInput.value = bot.profitFadePercent;
       el("profitFadeValue").textContent = bot.profitFadePercent ? `${bot.profitFadePercent.toFixed(2).replace(".", ",")}%` : "Kikapcsolva";
       el("profitFadeCloseRange").value = bot.profitFadeClosePercent;
       el("profitFadeCloseValue").textContent = `${bot.profitFadeClosePercent}%`;
@@ -489,9 +520,6 @@
       const balanceAsset = String(account?.asset || "USDC").toUpperCase();
       const positions = Array.isArray(account?.positions) ? account.positions : [];
       const position = positions.find(item => item?.symbol === "BTCUSDC") || positions[0] || null;
-      const marginBalance = Number(account?.margin_balance);
-      el("botValue").textContent = Number.isFinite(marginBalance) ? assetMoney(marginBalance, balanceAsset) : "—";
-      el("botValueLabel").textContent = `Binance margin (${balanceAsset})`;
       const totalUnrealized = Number(account?.unrealized_pnl);
       el("botPnlValue").textContent = Number.isFinite(totalUnrealized)
         ? `${totalUnrealized >= 0 ? "+" : ""}${assetMoney(totalUnrealized, balanceAsset)}`
@@ -1070,7 +1098,7 @@
       persist();
       renderBot();
       el("strategyStatus").textContent = bot.partialTakeProfitPercent
-        ? `Részleges zárás: +${bot.partialTakeProfitPercent.toFixed(2).replace(".", ",")}% kedvező BTC-ármozgásnál.`
+        ? `Részleges zárás: +${bot.partialTakeProfitPercent.toFixed(2).replace(".", ",")}% becsült pozíció-PnL-nél.`
         : "A tervezett részleges zárás kikapcsolva.";
     });
     el("partialCloseRange").addEventListener("input", event => {
@@ -1088,7 +1116,7 @@
       persist();
       renderBot();
       el("strategyStatus").textContent = portfolio.bot.profitFadePercent
-        ? `Profitvédelem: a kedvező BTC-ármozgás csúcsától ${portfolio.bot.profitFadePercent.toFixed(2).replace(".", ",")}% visszaesés.`
+        ? `Profitvédelem: a becsült pozíció-PnL csúcsától ${portfolio.bot.profitFadePercent.toFixed(2).replace(".", ",")}% visszaesés.`
         : "A tartás jelre működő profitvédelem kikapcsolva.";
     });
     el("profitFadeCloseRange").addEventListener("input", event => {
@@ -1120,6 +1148,7 @@
       }, { once:true });
     }
     async function startApplication() {
+      portfolio = readLocalPortfolio();
       setMySqlConnectionIndicator("checking");
       const sharedStorageAvailable = await loadSharedPortfolio();
       await refreshWorkerRuntime();

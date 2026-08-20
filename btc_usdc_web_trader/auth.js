@@ -3,6 +3,7 @@
 
   const AUTH_URL = "api/auth.php";
   const WEBAUTHN_URL = "api/webauthn.php";
+  const USERS_URL = "api/users.php";
   const isPwa = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   const appMode = isPwa ? "pwa" : "web";
   const supportsPasskeys = Boolean(window.PublicKeyCredential && navigator.credentials);
@@ -51,7 +52,7 @@
   }
 
   function setBusy(busy) {
-    document.querySelectorAll("#authGate button, #authGate input, #authToolbar button")
+    document.querySelectorAll("#authGate button, #authGate input, #authToolbar button, #userManagementPanel button, #userManagementPanel input")
       .forEach(node => { node.disabled = busy; });
   }
 
@@ -96,6 +97,7 @@
     const passkeyButton = byId("passkeyLoginButton");
     const toolbar = byId("authToolbar");
     const registerButton = byId("registerPasskeyButton");
+    const userManagementButton = byId("userManagementButton");
 
     document.body.classList.remove("auth-pending", "auth-ready", "auth-locked");
     document.body.classList.add(authenticated ? "auth-ready" : "auth-locked");
@@ -107,10 +109,13 @@
       csrfToken = String(state.csrfToken || "");
       byId("authSessionLabel").textContent = sessionLabel(state);
       if (registerButton) registerButton.hidden = !supportsPasskeys || !state.canRegisterPasskey;
+      if (userManagementButton) userManagementButton.hidden = false;
       setMessage("");
     } else {
       csrfToken = "";
       if (registerButton) registerButton.hidden = true;
+      if (userManagementButton) userManagementButton.hidden = true;
+      closeUserManagement();
       const username = setupRequired ? byId("setupUsername") : byId("loginUsername");
       window.setTimeout(() => username?.focus(), 50);
     }
@@ -273,6 +278,152 @@
     }
   }
 
+  function setUserManagementMessage(message, error = false) {
+    const node = byId("userManagementMessage");
+    if (!node) return;
+    node.textContent = message || "";
+    node.classList.toggle("error", error);
+  }
+
+  function closeUserManagement() {
+    const panel = byId("userManagementPanel");
+    if (panel) panel.hidden = true;
+    const result = byId("robotTokenResult");
+    const config = byId("robotTokenConfig");
+    if (result) result.hidden = true;
+    if (config) config.textContent = "";
+    setUserManagementMessage("");
+  }
+
+  function showRobotToken(result) {
+    const stateUrl = new URL("api/state.php", document.baseURI).href;
+    const runtimeUrl = new URL("api/robot-runtime.php", document.baseURI).href;
+    const config = [
+      "[web_state]",
+      `url = ${stateUrl}`,
+      `runtime_url = ${runtimeUrl}`,
+      `runtime_token = ${result.robotToken}`,
+    ].join("\n");
+    byId("robotTokenTitle").textContent = `${result.username} robot-konfigurációja`;
+    byId("robotTokenConfig").textContent = config;
+    byId("robotTokenResult").hidden = false;
+  }
+
+  function renderManagedUsers(data) {
+    const createForm = byId("createUserForm");
+    if (createForm) createForm.hidden = !data.isAdmin;
+    const body = byId("managedUsers");
+    if (!body) return;
+    body.replaceChildren();
+    (data.users || []).forEach(user => {
+      const row = document.createElement("tr");
+      const username = document.createElement("td");
+      const role = document.createElement("td");
+      const status = document.createElement("td");
+      const action = document.createElement("td");
+      username.textContent = user.username;
+      role.textContent = user.isAdmin ? "Admin" : "Felhasználó";
+      status.textContent = user.disabled ? "Tiltva" : (user.robotConfigured ? "Token kész" : "Nincs token");
+      status.className = `managed-user-status ${user.disabled ? "inactive" : (user.robotConfigured ? "configured" : "missing")}`;
+      if (!user.disabled) {
+        const rotateButton = document.createElement("button");
+        rotateButton.type = "button";
+        rotateButton.textContent = "Token cseréje";
+        rotateButton.addEventListener("click", () => rotateRobotToken(user.username));
+        action.append(rotateButton);
+      } else {
+        action.textContent = "—";
+      }
+      row.append(username, role, status, action);
+      body.append(row);
+    });
+    if (!body.children.length) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 4;
+      cell.className = "empty";
+      cell.textContent = "Nincs megjeleníthető felhasználó.";
+      row.append(cell);
+      body.append(row);
+    }
+  }
+
+  async function loadManagedUsers() {
+    const data = await authRequest(USERS_URL);
+    renderManagedUsers(data);
+    return data;
+  }
+
+  async function openUserManagement() {
+    const panel = byId("userManagementPanel");
+    if (!panel) return;
+    panel.hidden = false;
+    setBusy(true);
+    setUserManagementMessage("Felhasználók betöltése…");
+    try {
+      await loadManagedUsers();
+      setUserManagementMessage("");
+    } catch (error) {
+      setUserManagementMessage(error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createManagedUser(event) {
+    event.preventDefault();
+    setBusy(true);
+    setUserManagementMessage("Külön felhasználó és robot-hozzáférés létrehozása…");
+    try {
+      const result = await authRequest(USERS_URL, {
+        action:"create",
+        username:byId("managedUsername").value,
+        password:byId("managedPassword").value,
+      }, true);
+      byId("managedPassword").value = "";
+      byId("managedUsername").value = "";
+      showRobotToken(result);
+      await loadManagedUsers();
+      setUserManagementMessage(result.message);
+    } catch (error) {
+      byId("managedPassword").value = "";
+      setUserManagementMessage(error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rotateRobotToken(username) {
+    if (!window.confirm(`${username}: az előző robot-token azonnal érvénytelen lesz. Folytatod?`)) return;
+    setBusy(true);
+    setUserManagementMessage("Új robot-token készítése…");
+    try {
+      const result = await authRequest(USERS_URL, {
+        action:"rotate_robot_token",
+        username,
+        confirm:true,
+      }, true);
+      showRobotToken(result);
+      await loadManagedUsers();
+      setUserManagementMessage(result.message);
+    } catch (error) {
+      setUserManagementMessage(error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyRobotConfiguration() {
+    const config = byId("robotTokenConfig")?.textContent || "";
+    if (!config) return;
+    try {
+      await navigator.clipboard.writeText(config);
+      setUserManagementMessage("A robot-konfiguráció a vágólapra került.");
+    } catch {
+      setUserManagementMessage("A böngésző nem engedte a másolást; jelöld ki kézzel a konfigurációt.", true);
+    }
+  }
+
   async function logout() {
     setBusy(true);
     try {
@@ -298,6 +449,13 @@
     byId("autoPasskeyCheckbox")?.addEventListener("change", event => setAutoPasskeyEnabled(event.target.checked));
     byId("autoPasskeyButton")?.addEventListener("click", toggleAutoPasskey);
     byId("registerPasskeyButton")?.addEventListener("click", registerPasskey);
+    byId("userManagementButton")?.addEventListener("click", openUserManagement);
+    byId("closeUserManagementButton")?.addEventListener("click", closeUserManagement);
+    byId("createUserForm")?.addEventListener("submit", createManagedUser);
+    byId("copyRobotTokenButton")?.addEventListener("click", copyRobotConfiguration);
+    byId("userManagementPanel")?.addEventListener("click", event => {
+      if (event.target === byId("userManagementPanel")) closeUserManagement();
+    });
     byId("logoutButton")?.addEventListener("click", logout);
   }
 
@@ -330,5 +488,14 @@
     return response;
   }
 
-  window.BtcAuth = Object.freeze({ requireAuthentication, secureFetch });
+  function currentAccount() {
+    if (!authenticationState?.authenticated) return null;
+    return Object.freeze({
+      username:String(authenticationState.username || ""),
+      isAdmin:Boolean(authenticationState.isAdmin),
+      isLegacyAccount:Boolean(authenticationState.isLegacyAccount),
+    });
+  }
+
+  window.BtcAuth = Object.freeze({ requireAuthentication, secureFetch, currentAccount });
 })();

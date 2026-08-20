@@ -247,6 +247,7 @@ class LiveExecutionEngine:
             self.state_store.save(state)
 
         position_leverage = self._position_leverage(position, bot)
+        current_pnl_return = current_return * position_leverage
         stop_loss_pnl = self._stop_loss_pnl_percent(bot, position_leverage)
         trailing = self._number(bot, "trailingStopPercent", 0.25, 20)
         stop_price = mark_price
@@ -264,6 +265,7 @@ class LiveExecutionEngine:
                 f"Stop-loss ({stop_pnl_return:.2f}% becsült PnL; {stop_return:.4f}% ármozgás)",
             )
         drawdown = state.peak_return_percent - current_return
+        pnl_drawdown = drawdown * position_leverage
         if drawdown >= trailing:
             return self._close(
                 account,
@@ -288,9 +290,14 @@ class LiveExecutionEngine:
                 "Ellentétes stratégiajel",
             )
 
-        partial_trigger = self._number(bot, "partialTakeProfitPercent", 0, 20)
+        partial_trigger = self._profit_pnl_percent(
+            bot,
+            "partialTakeProfitPercent",
+            position_leverage,
+            20,
+        )
         if bool(bot.get("enabled")) and partial_trigger > 0 and not state.partial_taken:
-            if current_return >= partial_trigger:
+            if current_pnl_return >= partial_trigger:
                 partial_percent = self._number(bot, "partialClosePercent", 10, 90)
                 outcome = self._close(
                     account,
@@ -298,20 +305,25 @@ class LiveExecutionEngine:
                     position,
                     partial_percent,
                     "partial_take_profit",
-                    f"Részleges profitrealizálás (+{current_return:.2f}% ármozgás)",
+                    f"Részleges profitrealizálás (+{current_pnl_return:.2f}% becsült PnL)",
                 )
                 state.partial_taken = True
                 self.state_store.save(state)
                 return outcome
 
-        fade_trigger = self._number(bot, "profitFadePercent", 0, 10)
+        fade_trigger = self._profit_pnl_percent(
+            bot,
+            "profitFadePercent",
+            position_leverage,
+            10,
+        )
         if (
             bool(bot.get("enabled"))
             and signal == "hold"
             and state.partial_taken
             and not state.profit_fade_done
             and fade_trigger > 0
-            and drawdown >= fade_trigger
+            and pnl_drawdown >= fade_trigger
         ):
             close_percent = self._number(bot, "profitFadeClosePercent", 10, 100)
             outcome = self._close(
@@ -320,7 +332,7 @@ class LiveExecutionEngine:
                 position,
                 close_percent,
                 "profit_fade",
-                f"Profitvédelem ({drawdown:.2f}% visszaesés a csúcstól)",
+                f"Profitvédelem ({pnl_drawdown:.2f} PnL-százalékpont visszaesés a csúcstól)",
             )
             state.profit_fade_done = True
             self.state_store.save(state)
@@ -329,7 +341,8 @@ class LiveExecutionEngine:
         mode = "aktív" if bool(bot.get("enabled")) else "új belépés szünetel"
         return ExecutionOutcome(
             "monitoring",
-            f"Saját {side} pozíció kezelése {mode}; ármozgás: {current_return:+.2f}%.",
+            f"Saját {side} pozíció kezelése {mode}; becsült PnL: {current_pnl_return:+.2f}% "
+            f"({current_return:+.4f}% ármozgás).",
             managed_position=True,
         )
 
@@ -450,6 +463,25 @@ class LiveExecutionEngine:
             return cls._number(bot, "stopLossPercent", 1, 100)
         legacy_price_percent = cls._number(bot, "stopLossPercent", 0.25, 20)
         return min(100.0, max(1.0, legacy_price_percent * leverage))
+
+    @classmethod
+    def _profit_pnl_percent(
+        cls,
+        bot: dict[str, Any],
+        key: str,
+        leverage: int,
+        legacy_maximum: float,
+    ) -> float:
+        """A 10-es botverziótól közvetlen PnL%; régebbinél ár% × leverage."""
+
+        try:
+            version = int(bot.get("version") or 0)
+        except (TypeError, ValueError):
+            version = 0
+        if version >= 10:
+            return cls._number(bot, key, 0, 2500)
+        legacy_price_percent = cls._number(bot, key, 0, legacy_maximum)
+        return min(2500.0, legacy_price_percent * leverage)
 
     @staticmethod
     def _bot_snapshot(bot: dict[str, Any]) -> dict[str, Any]:

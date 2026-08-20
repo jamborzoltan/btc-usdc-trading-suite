@@ -10,11 +10,12 @@ return array(
     'db_user' => 'SAJAT_ADATBAZIS_FELHASZNALO',
     'db_password' => 'IDE_KERUL_AZ_ADATBAZIS_JELSZAVA',
 
-    // Egyetlen, saját használatú közös robotállapot az összes eszköz számára.
+    // Az első, meglévő felhasználó állapotazonosítója. A további felhasználókhoz
+    // az adminfelület automatikusan külön, véletlen azonosítót készít.
     'state_key' => 'btc-usdc-sajat-robot',
 
-    // Legalább 24 karakteres véletlen titok. Ugyanaz kerüljön a mini PC
-    // robot.cfg fájljának web_state.runtime_token értékébe.
+    // Az első felhasználó legacy/bootstrap robot-tokenje. A további felhasználók
+    // saját tokenje a webapp „Robotok” paneljén készül, és csak egyszer látható.
     'robot_runtime_token' => 'CSERELD_LE_EGY_HOSSZU_VELETLEN_TITOKRA_2026',
 
     // Egyszeri első beállítás. Az auth_setup_token legalább 32 karakteres,

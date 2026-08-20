@@ -148,8 +148,12 @@ function currentUserSession(array $config, bool $touch = true): ?array
 
     $idleRemaining = max(0, $durations['idle'] - ($now - $lastSeen));
     $absoluteRemaining = max(0, $durations['absolute'] - ($now - $createdAt));
+    $sessionStateKey = (string) ($_SESSION['auth_state_key'] ?? validatedStateKey($config));
     return array(
         'username' => (string) ($_SESSION['auth_username'] ?? ''),
+        'state_key' => $sessionStateKey,
+        'is_admin' => !empty($_SESSION['auth_is_admin']),
+        'is_legacy_account' => hash_equals(validatedStateKey($config), $sessionStateKey),
         'method' => $method,
         'pwa' => $pwa,
         'profile' => $durations['profile'],
@@ -159,7 +163,14 @@ function currentUserSession(array $config, bool $touch = true): ?array
     );
 }
 
-function establishUserSession(array $config, string $username, string $method, bool $pwa): array
+function establishUserSession(
+    array $config,
+    string $stateKey,
+    string $username,
+    bool $isAdmin,
+    string $method,
+    bool $pwa
+): array
 {
     startSecureSession($config);
     session_regenerate_id(true);
@@ -167,6 +178,8 @@ function establishUserSession(array $config, string $username, string $method, b
     $_SESSION = array(
         'authenticated' => true,
         'auth_username' => $username,
+        'auth_state_key' => $stateKey,
+        'auth_is_admin' => $isAdmin,
         'auth_method' => $method,
         'auth_pwa' => $method === 'passkey' && $pwa,
         'auth_created_at' => $now,
@@ -192,17 +205,105 @@ function requireUserSession(array $config, bool $requireCsrf = false): array
     return $session;
 }
 
-function hasValidRobotToken(array $config): bool
+function requestHasRobotToken(): bool
 {
-    $expected = (string) ($config['robot_runtime_token'] ?? '');
-    $provided = (string) ($_SERVER['HTTP_X_ROBOT_TOKEN'] ?? '');
-    return strlen($expected) >= 24 && $provided !== '' && hash_equals($expected, $provided);
+    return trim((string) ($_SERVER['HTTP_X_ROBOT_TOKEN'] ?? '')) !== '';
 }
 
-function requireRobotToken(array $config): void
+function robotTenantByToken(mysqli $connection, array $config): ?array
 {
-    if (!hasValidRobotToken($config)) {
+    $provided = trim((string) ($_SERVER['HTTP_X_ROBOT_TOKEN'] ?? ''));
+    if (strlen($provided) < 24) {
+        return null;
+    }
+    $tokenHash = hash('sha256', $provided);
+    $statement = $connection->prepare(
+        'SELECT state_key, username FROM btc_usdc_auth_users '
+        . 'WHERE robot_token_hash = ? AND disabled = 0 LIMIT 1'
+    );
+    $statement->bind_param('s', $tokenHash);
+    $statement->execute();
+    $statement->bind_result($stateKey, $username);
+    $found = $statement->fetch();
+    $statement->close();
+    if ($found) {
+        return array('state_key' => (string) $stateKey, 'username' => (string) $username);
+    }
+
+    // Egyszeri visszafelé kompatibilitás: a régi config.php token csak addig
+    // érvényes, amíg a legacy felhasználóhoz még nem került adatbázisos token.
+    $legacyToken = (string) ($config['robot_runtime_token'] ?? '');
+    if (strlen($legacyToken) < 24 || !hash_equals($legacyToken, $provided)) {
+        return null;
+    }
+    $legacyStateKey = validatedStateKey($config);
+    $statement = $connection->prepare(
+        'SELECT username FROM btc_usdc_auth_users '
+        . 'WHERE state_key = ? AND disabled = 0 AND robot_token_hash IS NULL LIMIT 1'
+    );
+    $statement->bind_param('s', $legacyStateKey);
+    $statement->execute();
+    $statement->bind_result($username);
+    $found = $statement->fetch();
+    $statement->close();
+    return $found
+        ? array('state_key' => $legacyStateKey, 'username' => (string) $username)
+        : null;
+}
+
+function requireRobotTenant(mysqli $connection, array $config): array
+{
+    $tenant = robotTenantByToken($connection, $config);
+    if ($tenant === null) {
         respondJson(403, array('error' => 'Érvénytelen robot-hitelesítés.'));
+    }
+    return $tenant;
+}
+
+function ensureLegacyUserSecurity(mysqli $connection, array $config): void
+{
+    $result = $connection->query(
+        'SELECT COUNT(*), COALESCE(SUM(is_admin = 1), 0) FROM btc_usdc_auth_users'
+    );
+    $counts = $result->fetch_row();
+    $result->free();
+    $userCount = (int) ($counts[0] ?? 0);
+    $adminCount = (int) ($counts[1] ?? 0);
+    if ($userCount === 1 && $adminCount === 0) {
+        $connection->query('UPDATE btc_usdc_auth_users SET is_admin = 1 LIMIT 1');
+    }
+
+    $legacyToken = (string) ($config['robot_runtime_token'] ?? '');
+    if (strlen($legacyToken) < 24) {
+        return;
+    }
+    $legacyStateKey = validatedStateKey($config);
+    $tokenHash = hash('sha256', $legacyToken);
+    $statement = $connection->prepare(
+        'UPDATE btc_usdc_auth_users SET robot_token_hash = ? '
+        . 'WHERE state_key = ? AND robot_token_hash IS NULL'
+    );
+    $statement->bind_param('ss', $tokenHash, $legacyStateKey);
+    $statement->execute();
+    $statement->close();
+}
+
+function validateAccountUsername(string $username): string
+{
+    $normalized = trim($username);
+    if (!preg_match('/^[A-Za-z0-9_.-]{3,64}$/', $normalized)) {
+        respondJson(422, array(
+            'error' => 'A felhasználónév 3–64 karakteres lehet; betűt, számot, pontot, kötőjelet és aláhúzást használhatsz.',
+        ));
+    }
+    return $normalized;
+}
+
+function validateAccountPassword(string $password): void
+{
+    $length = function_exists('mb_strlen') ? mb_strlen($password, 'UTF-8') : strlen($password);
+    if ($length < 12 || $length > 128) {
+        respondJson(422, array('error' => 'A jelszó 12–128 karakter hosszú legyen.'));
     }
 }
 

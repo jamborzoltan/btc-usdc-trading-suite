@@ -41,6 +41,9 @@ Az éles végrehajtás biztonsági tulajdonságai:
   lemond a pozíció kezeléséről;
 - a stratégia kikapcsolása letiltja az új belépést, de a már kezelt pozíció
   stop- és trailing-védelmét nem kapcsolja le.
+- a részleges profitküszöb és a tartás jel utáni profit-visszaesés közvetlenül
+  a becsült, tőkeáttételes pozíció-PnL%-ot használja; a trailing stop továbbra
+  is az instrumentum ármozgását méri;
 - a legutóbbi kockázati beállítások a helyi állapotfájlba kerülnek; ha a webes
   state API kiesik, új belépés nem történik, de a már kezelt pozíció szoftveres
   védelme az utolsó ismert beállításokkal tovább fut.
@@ -87,9 +90,11 @@ lekérdezésekkel fut.
    `robot.cfg.example` alapján másold bele: elsőként `mode = live_read_only`, továbbá a
    `[binance_usdm]` részben az API-kulcs, secret és `BTCUSDC` szimbólum kell. Az
    első ellenőrzéshez a Binance-kulcson csak olvasási jogosultságot használj.
-   Töltsd ki az `url` és `runtime_url` címet, valamint a `runtime_token` titkot. Ugyanez
-   a titok legyen a webapp `api/config.php` fájljának `robot_runtime_token`
-   értéke; a robot ezzel olvassa a védett állapot-API-t is. A két URL
+   Töltsd ki az `url` és `runtime_url` címet, valamint a `runtime_token` titkot.
+   Többfelhasználós telepítésnél ezt az adott felhasználó „Robotok” paneljén
+   kapott konfigurációból másold át. Az első, korábbról meglévő admin robotjánál
+   ez megegyezhet a webapp `api/config.php` fájljának `robot_runtime_token`
+   értékével. A robot ezzel olvassa a védett állapot-API-t is. A két URL
    ugyanazon webapphoz tartozik: ha például az oldal címe
    `https://sajatdomain.hu/robot/`, akkor a két cím rendre
    `https://sajatdomain.hu/robot/api/state.php` és
@@ -108,6 +113,22 @@ lekérdezésekkel fut.
 
 Leállítás: `Ctrl+C`. A későbbi, 0–24-es telepítésnél ezt Windows Feladatütemező
 vagy szolgáltatás indítja automatikusan a gép indulásakor.
+
+## Több felhasználó futtatása
+
+Minden webapp-felhasználóhoz külön Python robot tartozik. A folyamatok ugyanazt
+a programkódot használhatják, de külön `robot.cfg`, Binance API-kulcs és
+`execution_state.json` kell nekik. A `--config` kapcsolóval több példány
+indítható ugyanazon a gépen:
+
+```powershell
+py .\run_robot.py --config .\users\anna\robot.cfg
+py .\run_robot.py --config .\users\bela\robot.cfg
+```
+
+Az egyedi `runtime_token` választja ki a felhasználó saját webes beállításait és
+runtime-rekordjait. Ne másold ugyanazt a tokent két felhasználó konfigurációjába,
+és minden konfigurációban adj külön `state_file` elérési utat.
 
 Az első sikeres `--once` próba után a webappban a valós USDC- (EEA Futures Credits
 módban BNFCR-) tárcaegyenlegnek,
@@ -143,6 +164,8 @@ stophoz tartozó közelítő kedvezőtlen BTC-ármozgás
 margint nem modellez. Ha a webes beállítás a helyi korlát fölé kerül, a worker
 blokkolja az új belépést. A 8-as botverzió korábbi ármozgás%-os stopját a rendszer
 egyszer `régi stop × leverage` értékkel migrálja PnL%-ra, legfeljebb 100%-ig.
+A 10-es verzió ugyanígy migrálja a korábbi ármozgás-alapú részleges profit- és
+profit-visszaesési küszöböt PnL%-ra, legfeljebb 2500%-ig.
 
 Az első éles próbánál használj kicsi limiteket, futtasd egyszer `--once`
 kapcsolóval úgy, hogy a Stratégiafigyelés ki van kapcsolva, majd ellenőrizd a
@@ -153,6 +176,6 @@ vagy verziókezelésbe.
 ## Webes védelem
 
 A webapp böngészős elérését saját PHP-session és passkey-védelem kezeli. A mini
-PC nem használja a webes jelszót: a `runtime_token` kerül az `X-Robot-Token`
-fejlécbe. Ha a tárhelyen ezen felül HTTP Basic Auth is aktív, a `username` és
+PC nem használja a webes jelszót: a felhasználónként egyedi `runtime_token`
+kerül az `X-Robot-Token` fejlécbe. Ha a tárhelyen ezen felül HTTP Basic Auth is aktív, a `username` és
 `password` mezők továbbra is használhatók; ezek csak a mini PC-n maradnak.

@@ -5,6 +5,7 @@ poll_seconds = 1
 [web_state]
 url = https://sajatdomain.hu/api/state.php
 runtime_url = https://sajatdomain.hu/api/robot-runtime.php
+# A webapp „Robotok” paneljén az adott felhasználóhoz létrehozott, egyedi token.
 runtime_token = IDE_LEGALABB_24_KARAKTERES_KULON_TITOK_KELL
 username =
 password =

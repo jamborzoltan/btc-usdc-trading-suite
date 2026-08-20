@@ -78,28 +78,40 @@ function loadCredentialIds(mysqli $connection, string $stateKey): array
     return $ids;
 }
 
-function readPasskey(mysqli $connection, string $stateKey, string $credentialId): ?array
+function readPasskey(mysqli $connection, string $credentialId): ?array
 {
     $credentialHash = hash('sha256', $credentialId);
     $statement = $connection->prepare(
-        'SELECT p.credential_id, p.user_handle, p.public_key, p.sign_count, u.username '
+        'SELECT p.state_key, p.credential_id, p.user_handle, p.public_key, p.sign_count, '
+        . 'u.username, u.is_admin, u.disabled '
         . 'FROM btc_usdc_passkeys p INNER JOIN btc_usdc_auth_users u ON u.state_key = p.state_key '
-        . 'WHERE p.state_key = ? AND p.credential_hash = ? LIMIT 1'
+        . 'WHERE p.credential_hash = ? LIMIT 1'
     );
-    $statement->bind_param('ss', $stateKey, $credentialHash);
+    $statement->bind_param('s', $credentialHash);
     $statement->execute();
-    $statement->bind_result($storedCredentialId, $userHandle, $publicKey, $signCount, $username);
+    $statement->bind_result(
+        $stateKey,
+        $storedCredentialId,
+        $userHandle,
+        $publicKey,
+        $signCount,
+        $username,
+        $isAdmin,
+        $disabled
+    );
     $found = $statement->fetch();
     $statement->close();
-    if (!$found || !hash_equals((string) $storedCredentialId, $credentialId)) {
+    if (!$found || (bool) $disabled || !hash_equals((string) $storedCredentialId, $credentialId)) {
         return null;
     }
     return array(
         'credential_hash' => $credentialHash,
+        'state_key' => (string) $stateKey,
         'user_handle' => (string) $userHandle,
         'public_key' => (string) $publicKey,
         'sign_count' => (int) $signCount,
         'username' => (string) $username,
+        'is_admin' => (bool) $isAdmin,
     );
 }
 
@@ -113,7 +125,6 @@ function requireFreshPasswordLogin(array $config): array
 }
 
 $config = loadAppConfig();
-$stateKey = validatedStateKey($config);
 if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
     header('Allow: POST');
     respondJson(405, array('error' => 'Csak POST kérés engedélyezett.'));
@@ -127,6 +138,7 @@ try {
 
     if ($action === 'register_options') {
         $session = requireFreshPasswordLogin($config);
+        $stateKey = $session['state_key'];
         $userHandle = userHandleFor($stateKey, $session['username']);
         $existingIds = loadCredentialIds($connection, $stateKey);
         $options = $webAuthn->getCreateArgs(
@@ -145,6 +157,7 @@ try {
 
     if ($action === 'register_verify') {
         $session = requireFreshPasswordLogin($config);
+        $stateKey = $session['state_key'];
         $challenge = consumeWebAuthnChallenge('webauthn_register_challenge');
         $clientData = base64UrlDecode((string) ($request['clientDataJSON'] ?? ''));
         $attestation = base64UrlDecode((string) ($request['attestationObject'] ?? ''));
@@ -195,7 +208,7 @@ try {
     startSecureSession($config);
     $challenge = consumeWebAuthnChallenge('webauthn_login_challenge');
     $credentialId = (string) ($request['id'] ?? '');
-    $credential = readPasskey($connection, $stateKey, $credentialId);
+    $credential = readPasskey($connection, $credentialId);
     if ($credential === null) {
         usleep(250000);
         respondJson(401, array('error' => 'Ez a passkey nincs regisztrálva.'));
@@ -220,19 +233,30 @@ try {
     );
     $newSignCount = $webAuthn->getSignatureCounter();
     $storedSignCount = $newSignCount === null ? $credential['sign_count'] : $newSignCount;
+    $credentialStateKey = $credential['state_key'];
+    $credentialHash = $credential['credential_hash'];
     $statement = $connection->prepare(
         'UPDATE btc_usdc_passkeys SET sign_count = ?, last_used_at = CURRENT_TIMESTAMP '
         . 'WHERE state_key = ? AND credential_hash = ?'
     );
-    $statement->bind_param('iss', $storedSignCount, $stateKey, $credential['credential_hash']);
+    $statement->bind_param('iss', $storedSignCount, $credentialStateKey, $credentialHash);
     $statement->execute();
     $statement->close();
 
     $username = $credential['username'];
-    $session = establishUserSession($config, $username, 'passkey', isPwaRequest());
+    $session = establishUserSession(
+        $config,
+        $credential['state_key'],
+        $username,
+        $credential['is_admin'],
+        'passkey',
+        isPwaRequest()
+    );
     respondJson(200, array(
         'authenticated' => true,
         'username' => $username,
+        'isAdmin' => $credential['is_admin'],
+        'isLegacyAccount' => $session['is_legacy_account'],
         'method' => 'passkey',
         'sessionProfile' => $session['profile'],
         'expiresIn' => $session['expires_in'],

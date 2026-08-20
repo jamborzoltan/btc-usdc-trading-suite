@@ -7,6 +7,7 @@
 **/execution_state.json.tmp
 **/binance.cfg
 **/api/config.php
+/btc_usdc_web_trader/token
 *.env
 .env.*
 !.env.example

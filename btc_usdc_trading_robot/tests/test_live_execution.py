@@ -53,7 +53,7 @@ class FakeTradingClient:
 
 def bot(**changes):
     value = {
-        "version": 9,
+        "version": 10,
         "enabled": True,
         "leverage": 5,
         "marginUsdc": 20,
@@ -196,6 +196,107 @@ class LiveExecutionTests(unittest.TestCase):
             account([position]),
         )
         self.assertFalse(outcome.order_sent)
+
+    def test_125x_partial_take_profit_uses_position_pnl_percent(self) -> None:
+        self.store.save(
+            ExecutionState(
+                managed_position=True,
+                position_side="long",
+                entry_price=100,
+                initial_quantity=0.001,
+                last_entry_signal_key="trend:60:100:buy",
+            )
+        )
+        position = {
+            "symbol": "BTCUSDC",
+            "side": "long",
+            "quantity": 0.001,
+            "entry_price": 100,
+            "mark_price": 100.081,
+            "leverage": 125,
+        }
+        outcome = self.engine.process(
+            bot(
+                leverage=125,
+                trailingStopPercent=20,
+                partialTakeProfitPercent=10,
+            ),
+            strategy("hold", 100.081),
+            account([position]),
+        )
+        self.assertTrue(outcome.order_sent)
+        self.assertIn("becsült PnL", outcome.message)
+
+    def test_125x_partial_take_profit_waits_below_position_pnl_threshold(self) -> None:
+        self.store.save(
+            ExecutionState(
+                managed_position=True,
+                position_side="long",
+                entry_price=100,
+                initial_quantity=0.001,
+                last_entry_signal_key="trend:60:100:buy",
+            )
+        )
+        position = {
+            "symbol": "BTCUSDC",
+            "side": "long",
+            "quantity": 0.001,
+            "entry_price": 100,
+            "mark_price": 100.079,
+            "leverage": 125,
+        }
+        outcome = self.engine.process(
+            bot(
+                leverage=125,
+                trailingStopPercent=20,
+                partialTakeProfitPercent=10,
+            ),
+            strategy("hold", 100.079),
+            account([position]),
+        )
+        self.assertFalse(outcome.order_sent)
+
+    def test_version_9_partial_profit_keeps_legacy_price_trigger(self) -> None:
+        threshold = self.engine._profit_pnl_percent(
+            bot(version=9, leverage=125, partialTakeProfitPercent=1),
+            "partialTakeProfitPercent",
+            125,
+            20,
+        )
+        self.assertEqual(threshold, 125)
+
+    def test_125x_profit_fade_uses_pnl_drawdown_from_peak(self) -> None:
+        self.store.save(
+            ExecutionState(
+                managed_position=True,
+                position_side="long",
+                entry_price=100,
+                initial_quantity=0.001,
+                peak_return_percent=0.16,
+                partial_taken=True,
+                last_entry_signal_key="trend:60:100:buy",
+            )
+        )
+        position = {
+            "symbol": "BTCUSDC",
+            "side": "long",
+            "quantity": 0.001,
+            "entry_price": 100,
+            "mark_price": 100.079,
+            "leverage": 125,
+        }
+        outcome = self.engine.process(
+            bot(
+                leverage=125,
+                trailingStopPercent=20,
+                partialTakeProfitPercent=10,
+                profitFadePercent=10,
+            ),
+            strategy("hold", 100.079),
+            account([position]),
+        )
+        self.assertTrue(outcome.order_sent)
+        self.assertIn("PnL-százalékpont", outcome.message)
 
     def test_disabled_strategy_still_protects_managed_position(self) -> None:
         self.store.save(

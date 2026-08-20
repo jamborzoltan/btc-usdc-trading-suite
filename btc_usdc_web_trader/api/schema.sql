@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS btc_usdc_bot_settings (
   state_key VARCHAR(64) NOT NULL,
-  bot_version SMALLINT UNSIGNED NOT NULL DEFAULT 9,
+  bot_version SMALLINT UNSIGNED NOT NULL DEFAULT 10,
   enabled TINYINT(1) NOT NULL DEFAULT 0,
   strategy_type VARCHAR(32) NOT NULL DEFAULT 'trend',
   strategy_interval SMALLINT UNSIGNED NOT NULL DEFAULT 60,
@@ -34,6 +34,15 @@ UPDATE btc_usdc_bot_settings
 SET stop_loss_percent = LEAST(100, GREATEST(1, stop_loss_percent * leverage)),
     bot_version = 9
 WHERE bot_version < 9;
+
+-- A 10-es botverziótól a részleges profitküszöb és a profitcsúcsról mért
+-- visszaesés is közvetlen pozíció-PnL%. A tényleges régi aktiválási pontot
+-- a tőkeáttétellel történő egyszeri átszámítás őrzi meg.
+UPDATE btc_usdc_bot_settings
+SET partial_take_profit_percent = LEAST(2500, partial_take_profit_percent * leverage),
+    profit_fade_percent = LEAST(2500, profit_fade_percent * leverage),
+    bot_version = 10
+WHERE bot_version < 10;
 
 CREATE TABLE IF NOT EXISTS btc_usdc_robot_status (
   state_key VARCHAR(64) NOT NULL,
@@ -143,10 +152,26 @@ CREATE TABLE IF NOT EXISTS btc_usdc_auth_users (
   state_key VARCHAR(64) NOT NULL,
   username VARCHAR(64) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
+  robot_token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  is_admin TINYINT(1) NOT NULL DEFAULT 0,
+  disabled TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   password_changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (state_key)
+  PRIMARY KEY (state_key),
+  UNIQUE KEY uq_btc_usdc_auth_username (username),
+  UNIQUE KEY uq_btc_usdc_robot_token_hash (robot_token_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Többfelhasználós migráció: a state_key egyben a felhasználó saját robot-
+-- és beállításterének azonosítója. A nyers robot-token soha nem kerül MySQL-be.
+ALTER TABLE btc_usdc_auth_users
+  ADD COLUMN IF NOT EXISTS robot_token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  ADD COLUMN IF NOT EXISTS is_admin TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS disabled TINYINT(1) NOT NULL DEFAULT 0;
+
+ALTER TABLE btc_usdc_auth_users
+  ADD UNIQUE INDEX IF NOT EXISTS uq_btc_usdc_auth_username (username),
+  ADD UNIQUE INDEX IF NOT EXISTS uq_btc_usdc_robot_token_hash (robot_token_hash);
 
 CREATE TABLE IF NOT EXISTS btc_usdc_passkeys (
   state_key VARCHAR(64) NOT NULL,
@@ -159,8 +184,14 @@ CREATE TABLE IF NOT EXISTS btc_usdc_passkeys (
   transports VARCHAR(512) NOT NULL DEFAULT '[]',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_used_at TIMESTAMP NULL DEFAULT NULL,
-  PRIMARY KEY (state_key, credential_hash)
+  PRIMARY KEY (state_key, credential_hash),
+  UNIQUE KEY uq_btc_usdc_passkey_credential_hash (credential_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A credential azonosító globálisan egyedi, hogy felhasználónév nélküli
+-- passkey-belépésnél mindig pontosan egy fiókhoz legyen feloldható.
+ALTER TABLE btc_usdc_passkeys
+  ADD UNIQUE INDEX IF NOT EXISTS uq_btc_usdc_passkey_credential_hash (credential_hash);
 
 CREATE TABLE IF NOT EXISTS btc_usdc_auth_attempts (
   state_key VARCHAR(64) NOT NULL,
